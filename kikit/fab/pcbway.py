@@ -141,7 +141,7 @@ def bomToCsv(bomData, filename, nBoards, types):
 
 def exportPcbway(board, outputdir, assembly, schematic, ignore,
                  manufacturer, partnumber, description, notes, soldertype,
-                 footprint, corrections, missingerror, nboards, variant):
+                 footprint, corrections, correctionpatterns, missingerror, nboards, variant):
     """
     Prepare fabrication files for PCBWay including their assembly service
     """
@@ -188,7 +188,7 @@ def exportPcbway(board, outputdir, assembly, schematic, ignore,
     if missingFields and missingerror:
         sys.exit("There are components with missing ordercode, aborting")
 
-    posData = collectPosData(loadedBoard, correctionFields, bom=components)
+    posData = collectPosData(loadedBoard, correctionFields, bom=components, correctionFile=correctionpatterns)
     posDataToFile(posData, os.path.join(outputdir, "pos.csv"))
     types = collectSolderTypes(loadedBoard)
     bomToCsv(bom, os.path.join(outputdir, "bom.csv"), nboards, types)

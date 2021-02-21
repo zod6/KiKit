@@ -52,7 +52,7 @@ def bomToCsv(bomData, filename):
             writer.writerow([value, ",".join(references), footprint, lcsc])
 
 def exportJlcpcb(board, outputdir, assembly, schematic, ignore, field,
-           corrections, missingerror):
+           corrections, correctionpatterns, missingerror):
     """
     Prepare fabrication files for JLCPCB including their assembly service
     """
@@ -85,6 +85,6 @@ def exportJlcpcb(board, outputdir, assembly, schematic, ignore, field,
     if missingFields and missingerror:
         sys.exit("There are components with missing ordercode, aborting")
 
-    posData = collectPosData(loadedBoard, correctionFields, bom=components)
+    posData = collectPosData(loadedBoard, correctionFields, bom=components, correctionFile=correctionpatterns)
     posDataToFile(posData, os.path.join(outputdir, "pos.csv"))
     bomToCsv(bom, os.path.join(outputdir, "bom.csv"))

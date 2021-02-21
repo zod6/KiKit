@@ -1,4 +1,6 @@
 import csv
+import re
+from typing import OrderedDict
 from  kikit.pcbnew_compatibility import pcbnew
 from math import sin, cos, radians
 from kikit.common import *
@@ -46,8 +48,42 @@ def defaultFootprintX(footprint, placeOffset, compensation):
 def defaultFootprintY(footprint, placeOffset, compensation):
     return -toMm(footprintPosition(footprint, placeOffset, compensation)[1])
 
+def readCorrectionPatterns(filename):
+    """
+    Read footprint correction pattern file.
+
+    The file should be a CSV file with the following fields:
+    - Regexp to match to the footprint
+    - X correction
+    - Y correction
+    - Rotation
+    """
+    corrections = OrderedDict()
+    with open(filename) as csvfile:
+        sample = csvfile.read(1024)
+        dialect = csv.Sniffer().sniff(sample)
+        has_header = csv.Sniffer().has_header(sample)
+        csvfile.seek(0)
+        reader = csv.reader(csvfile, dialect)
+        first = True
+        for row in reader:
+            if has_header and first:
+                first = False
+                continue
+            corrections[re.compile(row[0])] = (
+                float(row[1]), float(row[2]), float(row[3]))
+    return corrections
+
+def applyCorrectionPattern(correctionPatterns, footprint):
+    footprintName = str(footprint.GetFPID().GetLibItemName())
+    for pattern, value in correctionPatterns.items():
+        if pattern.match(footprintName):
+            return value
+    return (0, 0, 0)
+
 def collectPosData(board, correctionFields, posFilter=lambda x : True,
-                   footprintX=defaultFootprintX, footprintY=defaultFootprintY, bom=None):
+                   footprintX=defaultFootprintX, footprintY=defaultFootprintY, bom=None,
+                   correctionFile=None):
     """
     Extract position data of the footprints.
 
@@ -61,6 +97,11 @@ def collectPosData(board, correctionFields, posFilter=lambda x : True,
         bom = {}
     else:
         bom = { comp["reference"]: comp for comp in bom }
+
+    correctionPatterns = {}
+    if correctionFile is not None:
+        correctionPatterns = readCorrectionPatterns(correctionFile)
+
     footprints = []
     placeOffset = board.GetDesignSettings().m_AuxOrigin
     for footprint in board.GetFootprints():
@@ -79,7 +120,9 @@ def collectPosData(board, correctionFields, posFilter=lambda x : True,
             if field is not None:
                 break
         if field is None or field == "":
-            return 0, 0, 0
+            return applyCorrectionPattern(
+                correctionPatterns, 
+                footprint)
         try:
             return parseCompensation(field)
         except FormatError as e:
