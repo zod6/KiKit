@@ -20,13 +20,21 @@ def collectBom(components, lscsFields, ignore):
             continue
         if reference in ignore:
             continue
-        if getField(c, "JLCPCB_IGNORE") is not None:
+        if getField(c, "DNP") is not None:
             continue
         orderCode = None
         for fieldName in lscsFields:
             orderCode = getField(c, fieldName)
             if orderCode is not None:
                 break
+
+        if orderCode is None:
+            for type, references in bom.items():
+                val, foot, lcsc = type
+                if val==getField(c, "Value") and foot==getField(c, "Footprint") and lcsc:
+                    orderCode=lcsc
+                    break
+
         cType = (
             getField(c, "Value"),
             getField(c, "Footprint"),

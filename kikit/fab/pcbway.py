@@ -39,6 +39,8 @@ def collectBom(components, manufacturerFields, partNumberFields,
     descriptionFields.append("Value")
 
     for c in components:
+        if getField(c, "DNP") is not None:
+            continue
         if c["unit"] != 1:
             continue
         reference = c["reference"]
