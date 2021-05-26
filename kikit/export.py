@@ -107,9 +107,10 @@ def gerberImpl(boardfile, outputdir, plot_plan=fullGerberPlotPlan, drilling=True
         for innerlyr in range (1, lyrcnt - 1):
             popt.SetSkipPlotNPTH_Pads(True)
             pctl.SetLayer(innerlyr)
-            lyrname = 'inner{}'.format(innerlyr)
+            lyrname = "" if settings["NoSuffix"] else 'inner{}'.format(innerlyr)
             pctl.OpenPlotfile(lyrname, PLOT_FORMAT_GERBER, "inner")
             print('plot {}'.format(pctl.GetPlotFileName()))
+            jobfile_writer.AddGbrFile(innerlyr, os.path.basename(pctl.GetPlotFileName()))
             if pctl.PlotLayer() == False:
                 print("plot error")
 
@@ -125,7 +126,11 @@ def gerberImpl(boardfile, outputdir, plot_plan=fullGerberPlotPlan, drilling=True
 
         mirror = False
         minimalHeader = settings["MinimalHeader"]
-        offset = board.GetDesignSettings().m_AuxOrigin
+        if settings["UseAuxOrigin"]:
+            offset = board.GetDesignSettings().m_AuxOrigin
+        else:
+            offset = wxPoint(0,0)
+
         # False to generate 2 separate drill files (one for plated holes, one for non plated holes)
         # True to generate only one drill file
         mergeNPTH = settings["MergeNPTH"]
