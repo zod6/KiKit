@@ -41,6 +41,7 @@ def jlcpcb(**kwargs):
     help="Comma separated list of fields to extract the footprint name for the BOM. First existing field is used, otherwise the footprint library name.")
 @click.option("--nBoards", type=int, default=1,
     help="Number of boards per panel (default 1).")
+@click.option("--variant", type=str, default="", help="if specified, ignore other variants ('variant' field).")
 @click.option("--missingError/--missingWarn", help="If a non-ignored component misses Manufacturer / PartNumber field, fail")
 def pcbway(**kwargs):
     """

@@ -30,7 +30,7 @@ def addVirtualToRefsToIgnore(refsToIgnore, board):
 
 def collectBom(components, manufacturerFields, partNumberFields,
                descriptionFields, notesFields, typeFields, footprintFields,
-               ignore):
+               ignore, variants):
     bom = {}
 
     # Use KiCad footprint as fallback for footprint
@@ -77,6 +77,10 @@ def collectBom(components, manufacturerFields, partNumberFields,
             if footprint is not None:
                 break
 
+        if (len(variants)!=1 or variants[0]!='') and getField(c, "variant") is not None and getField(c, "variant") not in variants:
+            print(f"vars: {variants}, ", len(variants))
+            continue
+
         cType = (
             description,
             footprint,
@@ -121,7 +125,7 @@ def bomToCsv(bomData, filename, nBoards, types):
 
 def exportPcbway(board, outputdir, assembly, schematic, ignore,
                  manufacturer, partnumber, description, notes, soldertype,
-                 footprint, corrections, missingerror, nboards):
+                 footprint, corrections, missingerror, nboards, variant):
     """
     Prepare fabrication files for PCBWay including their assembly service
     """
@@ -147,10 +151,11 @@ def exportPcbway(board, outputdir, assembly, schematic, ignore,
     notesFields         = [x.strip() for x in notes.split(",")]
     typeFields          = [x.strip() for x in soldertype.split(",")]
     footprintFields     = [x.strip() for x in footprint.split(",")]
+    variants            = [x.strip() for x in variant.split(",")]
     addVirtualToRefsToIgnore(refsToIgnore, loadedBoard)
     bom = collectBom(components, manufacturerFields, partNumberFields,
                      descriptionFields, notesFields, typeFields,
-                     footprintFields, refsToIgnore)
+                     footprintFields, refsToIgnore, variants)
 
     missingFields = False
     for type, references in bom.items():
