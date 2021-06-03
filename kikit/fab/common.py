@@ -64,6 +64,8 @@ def collectPosData(board, correctionFields, posFilter=lambda x : True,
     footprints = []
     placeOffset = board.GetDesignSettings().m_AuxOrigin
     for footprint in board.GetFootprints():
+        if len(bom)>0 and footprint.GetReference() not in bom:
+            continue
         if footprint.GetAttributes() & MODULE_ATTR_T.MOD_VIRTUAL:
             continue
         if (posFilter(footprint)):

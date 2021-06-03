@@ -51,21 +51,41 @@ def collectBom(components, manufacturerFields, partNumberFields,
             manufacturer = getField(c, manufacturerName)
             if manufacturer is not None:
                 break
+
         partNumber = None
-        for partNumberName in partNumberFields:
-            partNumber = getField(c, partNumberName)
-            if partNumber is not None:
-                break
+        # if we have variant then check if variant.partNumber exists. TODO: allow multiple partnumbers/bom lines
+        if variants[0]!='':
+            for variant in variants:
+                for partNumberName in partNumberFields:
+                    partNumber = getField(c, variant+"."+partNumberName)
+                    if partNumber is not None:
+                        break
+        if partNumber is None:
+            for partNumberName in partNumberFields:
+                partNumber = getField(c, partNumberName)
+                if partNumber is not None:
+                    break
+
         description = None
         for descriptionName in descriptionFields:
             description = getField(c, descriptionName)
             if description is not None:
                 break
+
+        # if we have variant then check if variant.notesName exists. TODO: allow multiple partnumbers/bom lines
         notes = None
-        for notesName in notesFields:
-            notes = getField(c, notesName)
-            if notes is not None:
-                break
+        if variants[0]!='':
+            for variant in variants:
+                for notesName in notesFields:
+                    notes = getField(c, variant+"."+notesName)
+                    if notes is not None:
+                        break
+        if notes is None:
+            for notesName in notesFields:
+                notes = getField(c, notesName)
+                if notes is not None:
+                    break
+
         solderType = None
         for typeName in typeFields:
             solderType = getField(c, typeName)
@@ -76,10 +96,6 @@ def collectBom(components, manufacturerFields, partNumberFields,
             footprint = getField(c, footprintName)
             if footprint is not None:
                 break
-
-        if (len(variants)!=1 or variants[0]!='') and getField(c, "variant") is not None and getField(c, "variant") not in variants:
-            print(f"vars: {variants}, ", len(variants))
-            continue
 
         cType = (
             description,
@@ -114,7 +130,7 @@ def bomToCsv(bomData, filename, nBoards, types):
             references, cType = tmp[i]
             references = natural_sort(references)
             description, footprint, manufacturer, partNumber, notes, solderType = cType
-            if solderType is None:
+            if solderType is None and references[0] in types:
                 solderType = types[references[0]]
             writer.writerow([item_no, ",".join(references),
                              len(references) * nBoards, manufacturer,
@@ -153,6 +169,11 @@ def exportPcbway(board, outputdir, assembly, schematic, ignore,
     footprintFields     = [x.strip() for x in footprint.split(",")]
     variants            = [x.strip() for x in variant.split(",")]
     addVirtualToRefsToIgnore(refsToIgnore, loadedBoard)
+
+    # part has variant set and not in provided variant list
+    if variants[0]!='':
+        components = [ c for c in components if getField(c, "variant") is None or getField(c, "variant") in variants ]
+
     bom = collectBom(components, manufacturerFields, partNumberFields,
                      descriptionFields, notesFields, typeFields,
                      footprintFields, refsToIgnore, variants)
