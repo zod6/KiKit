@@ -187,6 +187,15 @@ are present. You can read more about multi-board project [here](multiboard.md).
 
 **Types**: auto, rectangle, annotation
 
+**Common options**:
+
+- `stack`: specify the number of layers of the panel. Valid options are
+  `2layer`, `4layer`, `6layer` or `inehrit` (default). The use case for this
+  option is when you design a multiple boards in a single desing and you
+  separate them, however, one boards is e.g., 4 layer and one 2 layer. Then you
+  design both of them as 4 layer and you specify `stack: 2layer` for the 2 layer
+  one when panelizing or separating.
+
 #### Auto
 
 Find all board edges and use them to construct source rectangle. Suitable for
@@ -313,8 +322,8 @@ Add rail (either on top and bottom or on left and right) to the panel.
 
 Add a frame around the board.
 
-- `cuts` - true/false - specify whether to add cuts to the corners of the frame
-  for easy removal.
+- `cuts` - one of `none`, `both`, `v`, `h` - specify whether to add cuts to the
+  corners of the frame for easy removal. Default `both`.
 
 #### Tighframe
 
@@ -357,13 +366,18 @@ need more text or more sophisticated placing options, see `script` option from
 
 - `text` - The text to be displayed. Note that you can escape `;` via `\`
 - `anchor` - Origin of the text. Can be one of `tl`, `tr`, `bl`, `br` (corners),
-  `mt`, `mb`, `ml`, `mr` (middle of sides), `c` (center).
-- `hoffset`, `voffset` - specify the offset from anchor
-- `orientation` - specify the orientation (angle)
-- `width`, `height` - width and height of the text
-- `hjustify` - justification of the text. One of `left`, `right`, `center`
-- `vjustify` - justification of the text. One of `top`, `bottom`, `center`
-- `thickness` - stroke thickness
+  `mt`, `mb`, `ml`, `mr` (middle of sides), `c` (center). The anchors refer to
+  the panel outline. Default `mt`
+- `hoffset`, `voffset` - specify the offset from anchor. Respects KiCAD
+  coordinate system. Default `0mm`.
+- `orientation` - specify the orientation (angle). Default `0deg`
+- `width`, `height` - width and height of the characters (the same parameters as
+  KiCAD uses). Default `1.5mm`.
+- `hjustify` - justification of the text. One of `left`, `right`, `center`.
+  Default `center`.
+- `vjustify` - justification of the text. One of `top`, `bottom`, `center`.
+  Default `center`
+- `thickness` - stroke thickness. Default `0.3mm`.
 - `layer` - specify text layer
 
 ## Postprocess

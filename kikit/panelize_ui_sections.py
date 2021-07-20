@@ -115,7 +115,8 @@ SOURCE_SECTION = {
     "tly": SLength(),
     "brx": SLength(),
     "bry": SLength(),
-    "ref": SStr()
+    "ref": SStr(),
+    "stack": SChoice(["inherit", "2layer", "4layer", "6layer"])
 }
 
 def ppSource(section):
@@ -159,7 +160,7 @@ FRAMING_SECTION = {
     "space": SLength(),
     "width": SLength(),
     "slotwidth": SLength(),
-    "cuts": SBool(),
+    "cuts": SChoice(["none", "both", "v", "h"]),
     "cutcurves": SBool(),
     "layer": SLayer()
 }

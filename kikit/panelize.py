@@ -436,13 +436,13 @@ class Panel:
         Inherit text properties from a board specified by a properties
         """
         b = pcbnew.LoadBoard(boardFilename)
-        self.setDesignSettings(b.GetDesignSettings())
+        self.board.SetProperties(b.GetProperties())
 
     def setProperties(self, properties):
         """
         Set text properties cached in the board
         """
-        self.board.SetProperties(designSettings)
+        self.board.SetProperties(properties)
 
     def appendBoard(self, filename, destination, sourceArea=None,
                     origin=Origin.Center, rotationAngle=0, shrink=False,
@@ -504,6 +504,15 @@ class Panel:
         edges = []
         annotations = []
         for footprint in footprints:
+            # We want to rotate text within footprints by the requested amount,
+            # even if that text has "keep upright" attribute set. For that,
+            # the attribute must be first removed without changing the
+            # orientation of the text.
+            for item in (*footprint.GraphicalItems(), footprint.Value(), footprint.Reference()):
+                if isinstance(item, pcbnew.TEXTE_MODULE) and item.IsKeepUpright():
+                    actualOrientation = item.GetDrawRotation()
+                    item.SetKeepUpright(False)
+                    item.SetTextAngle(actualOrientation - footprint.GetOrientation())
             footprint.Rotate(originPoint, rotationAngle)
             footprint.Move(translation)
             edges += removeCutsFromFootprint(footprint)
@@ -706,7 +715,8 @@ class Panel:
     def makeFrame(self, width, hspace, vspace):
         """
         Build a frame around the board. Specify width and spacing between the
-        boards substrates and the frame. Return frame cuts
+        boards substrates and the frame. Return a tuple of vertical and
+        horizontal cuts.
         """
         frameInnerRect = expandRect(shpBoxToRect(self.boardsBBox()),
             hspace - SHP_EPSILON, vspace + SHP_EPSILON)
@@ -721,7 +731,7 @@ class Panel:
             innerArea = combineBoundingBoxes(innerArea, s.boundingBox())
         frameCutsV = self.makeFrameCutsV(innerArea, frameInnerRect, frameOuterRect)
         frameCutsH = self.makeFrameCutsH(innerArea, frameInnerRect, frameOuterRect)
-        return chain(frameCutsV, frameCutsH)
+        return frameCutsV, frameCutsH
 
     def makeTightFrame(self, width, slotwidth, hspace, vspace):
         """
@@ -1034,8 +1044,8 @@ class Panel:
         fill = box(*outerBounds).difference(bBoxes.buffer(SHP_EPSILON))
         self.appendSubstrate(fill.buffer(SHP_EPSILON))
 
-        # Make the cuts
-        substrateBoundaries = [linestringToSegments(s.partitionLine)
+        # Make the cuts from the bounding boxes of the PCB
+        substrateBoundaries = [linestringToSegments(rectToShpBox(s.boundingBox()).exterior)
             for s in self.substrates]
         substrateCuts = [LineString(x) for x in chain(*substrateBoundaries)]
         return substrateCuts
@@ -1046,12 +1056,15 @@ class Panel:
         Raise an error if this is attempted twice with inconsistent layer count
         boards.
         """
-        if(self.copperLayerCount is None):
-            self.copperLayerCount = board.GetCopperLayerCount()
-            self.board.SetCopperLayerCount(self.copperLayerCount)
+        if self.copperLayerCount is None:
+            self.setCopperLayers(board.GetCopperLayerCount())
 
         elif(self.copperLayerCount != board.GetCopperLayerCount()):
             raise RuntimeError("Attempting to panelize boards together of mixed layer counts")
+
+    def setCopperLayers(self, count):
+        self.copperLayerCount = count
+        self.board.SetCopperLayerCount(self.copperLayerCount)
 
     def copperFillNonBoardAreas(self):
         """
@@ -1152,9 +1165,14 @@ class Panel:
         for s in boundarySubstrates:
             hLines, vLines = partition.partitionSubstrate(s)
             for l in hLines:
-                hBoneLines.remove(l)
+                # When edge overlaps with boundary substrate, the line is not
+                # present
+                if l in hBoneLines:
+                    hBoneLines.remove(l)
             for l in vLines:
-                vBoneLines.remove(l)
+                # Ditto as above
+                if l in vBoneLines:
+                    vBoneLines.remove(l)
         minx, miny, maxx, maxy = self.boardSubstrate.bounds()
         # Cut backbone on substrates boundaries:
         cut = lambda xs, y: chain(*[x.cut(y) for x in xs])
