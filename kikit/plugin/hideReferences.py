@@ -1,11 +1,14 @@
-from kikit.pcbnew_compatibility import pcbnew
+from pcbnewTransition import pcbnew
 import wx
 import re
+import os
+import kikit
 from kikit import modify
+from kikit.common import PKG_BASE
 
 class HideReferencesDialog(wx.Dialog):
     def __init__(self, parent=None, board=None):
-        wx.Dialog.__init__(self, parent, title='Specify which components to hide')
+        wx.Dialog.__init__(self, parent, title=f'Specify which components to hide (version {kikit.__version__})')
         self.board = board
 
         self.Bind(wx.EVT_CLOSE, self.OnCancel, id=self.GetId())
@@ -102,9 +105,11 @@ class HideReferencesDialog(wx.Dialog):
 
 class HideReferencesPlugin(pcbnew.ActionPlugin):
     def defaults(self):
-        self.name = "Show/hide references"
-        self.category = "Modify PCB"
+        self.name = "KiKit: Show/hide references"
+        self.category = "KiKit"
         self.description = "Show/hide references in the board based on regular expression"
+        self.icon_file_name = os.path.join(PKG_BASE, "resources", "graphics", "removeRefIcon_24x24.png")
+        self.show_toolbar_button = True
 
     def Run(self):
         try:

@@ -1,12 +1,11 @@
 import click
-from kikit.pcbnew_compatibility import pcbnew
+from pcbnewTransition import pcbnew, isV6
 import csv
 import os
 import re
 import sys
 import shutil
 from pathlib import Path
-from kikit.eeshema import extractComponents, getField
 from kikit.fab.common import *
 from kikit.common import *
 from kikit.export import gerberImpl, exportSettingsPcbway
@@ -14,7 +13,7 @@ from kikit.export import gerberImpl, exportSettingsPcbway
 def collectSolderTypes(board):
     result = {}
     for footprint in board.GetFootprints():
-        if footprint.GetAttributes() & MODULE_ATTR_T.MOD_VIRTUAL:
+        if excludeFromPos(footprint):
             continue
         if hasNonSMDPins(footprint):
             result[footprint.GetReference()] = "thru-hole"
@@ -25,7 +24,7 @@ def collectSolderTypes(board):
 
 def addVirtualToRefsToIgnore(refsToIgnore, board):
     for footprint in board.GetFootprints():
-        if footprint.GetAttributes() & MODULE_ATTR_T.MOD_VIRTUAL:
+        if excludeFromPos(footprint):
             refsToIgnore.append(footprint.GetReference())
 
 def collectBom(components, manufacturerFields, partNumberFields,
@@ -41,9 +40,9 @@ def collectBom(components, manufacturerFields, partNumberFields,
     for c in components:
         if getField(c, "DNP") is not None:
             continue
-        if c["unit"] != 1:
+        if getUnit(c) != 1:
             continue
-        reference = c["reference"]
+        reference = getReference(c)
         if reference.startswith("#PWR") or reference.startswith("#FL") or reference in ignore:
             continue
         manufacturer = None
@@ -141,11 +140,15 @@ def bomToCsv(bomData, filename, nBoards, types):
 
 def exportPcbway(board, outputdir, assembly, schematic, ignore,
                  manufacturer, partnumber, description, notes, soldertype,
-                 footprint, corrections, correctionpatterns, missingerror, nboards, variant, nametemplate):
+                 footprint, corrections, correctionpatterns, missingerror, nboards, variant, nametemplate, drc):
     """
     Prepare fabrication files for PCBWay including their assembly service
     """
     loadedBoard = pcbnew.LoadBoard(board)
+
+    if drc:
+        ensurePassingDrc(loadedBoard)
+
     refsToIgnore = parseReferences(ignore)
     removeComponents(loadedBoard, refsToIgnore)
     Path(outputdir).mkdir(parents=True, exist_ok=True)

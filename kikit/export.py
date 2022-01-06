@@ -1,7 +1,7 @@
 # Based on https://github.com/KiCad/kicad-source-mirror/blob/master/demos/python_scripts_examples/gen_gerber_and_drill_files_board.py
 import sys
 import os
-from kikit.pcbnew_compatibility import pcbnew
+from pcbnewTransition import pcbnew
 from pcbnew import *
 
 fullGerberPlotPlan = [
@@ -19,13 +19,14 @@ fullGerberPlotPlan = [
 ]
 
 exportSettingsJlcpcb = {
-    "UseGerberProtelExtensions": False,
-    "UseAuxOrigin": True,
-    "ExcludeEdgeLayer": False,
+    "UseGerberProtelExtensions": True,
+    "UseAuxOrigin": False,
+    "ExcludeEdgeLayer": True,
     "MinimalHeader": False,
     "NoSuffix": False,
     "MergeNPTH": True,
     "ZerosFormat": GENDRILL_WRITER_BASE.DECIMAL_FORMAT,
+    "SubstractMaskFromSilk": True
 }
 
 exportSettingsPcbway = {
@@ -36,6 +37,16 @@ exportSettingsPcbway = {
     "NoSuffix": True,
     "MergeNPTH": False,
     "ZerosFormat": GENDRILL_WRITER_BASE.SUPPRESS_LEADING,
+}
+
+exportSettingsOSHPark = {
+    "UseGerberProtelExtensions": True,
+    "UseAuxOrigin": False,
+    "ExcludeEdgeLayer": True,
+    "MinimalHeader": False,
+    "NoSuffix": False,
+    "MergeNPTH": True,
+    "ZerosFormat": GENDRILL_WRITER_BASE.DECIMAL_FORMAT,
 }
 
 
@@ -125,7 +136,7 @@ def gerberImpl(boardfile, outputdir, plot_plan=fullGerberPlotPlan, drilling=True
         mirror = False
         minimalHeader = settings["MinimalHeader"]
         if settings["UseAuxOrigin"]:
-            offset = board.GetDesignSettings().m_AuxOrigin
+            offset = board.GetDesignSettings().GetAuxOrigin()
         else:
             offset = wxPoint(0,0)
 

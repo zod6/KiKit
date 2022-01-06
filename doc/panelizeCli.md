@@ -6,6 +6,9 @@ structure. The configuration contains several categories (e.g., `layout`,
 (e.g., `tabsCount`). All categories and their parameters are described further
 below.
 
+Note that you can use the [pcbnew action plugin](panelizeGui.md) to
+interactively construct the panelization configuration structure.
+
 # Configurations
 
 The configuration can be supplied to KiKit via a JSON file with comments and
@@ -40,8 +43,11 @@ following
     "framing": {
         "type": "none",
         "thickness": "0mm",
-        "millRadius": "0mm",
-        "copperFill": false
+    },
+    "post": {
+        "type": "auto",
+        "millradius": "0mm",
+        "copperfill": false
     }
 }
 ```
@@ -154,13 +160,11 @@ the CLI by specifying it first and omitting the `type` word; e.g., `--cuts
 **Common options**:
 
 - `rows`, `cols`: Specify the number of boards in the grid pattern
-- `hspace`, `vspace`, `space`: Specify space the gap between the boards. You can
+- `hspace`, `vspace`, `space`: Specify the gap between the boards. You can
   specify separately vertical and horizontal spacing or you can specify `space`
   to make them the same (it has higher priority).
 - `rotation`: Rotate the boards before placing them in the panel
-- `alternation`: Specify some alternations of board rotation. **All labels on
-  the board in KiCAD have by-default active the "stay upright" flag. Disable
-  this flag, otherwise your labels will be upside down on some boards**.
+- `alternation`: Specify alternations of board rotation.
     - `none`: Do not alternate
     - `rows`: Rotate boards by 180° on every next row
     - `cols`: Rotate boards by 180° on every next column
@@ -212,7 +216,7 @@ you have components sticking out of your design.
 
 Specify the source rectangle explicitly.
 
-- `tlx, tly, brx, bry` - specify the coordinates (via length units) of the
+- `tlx, tly, brx, bry`: specify the coordinates (via length units) of the
   rectangle via top-left and bottom-right corner.
 
 #### Annotation
@@ -222,7 +226,8 @@ file to name the board. The area is determined by a bounding box of the lines in
 the `Edge.Cuts` layer that the arrows point to. Note that the tip of the arrow
 must lie inside the
 
-- `ref` - specify the annotation symbol reference
+- `ref`: specify the annotation symbol reference
+- `tolerance`: see above
 
 ## Tabs
 
@@ -313,6 +318,8 @@ left/right rails.
 - `hspace`, `vspace`, `space` - specify the space between PCB and the
   frame/rail. `space` overrides `hspace and vspace`.
 - `width` - specify with of the rails or frame
+- `fillet`, `chamfer` - fillet/chamfer frame corners. Specify radius or chamfer
+  size.
 
 #### Railstb/Railsrl
 
@@ -338,6 +345,7 @@ Add tooling holes to the (rail/frame of) the panel. The holes are positioned
 by
 
 **Types**: none, 3hole, 4hole
+
 **Common options**:
 
 - `hoffset`, `voffset` - specify the offset from from panel edges
@@ -350,6 +358,7 @@ by
 Add fiducial to the (rail/frame of) the panel.
 
 **Types**: none, 3fid, 4fid
+
 **Common options**:
 
 - `hoffset`, `voffset` - specify the offset from from panel edges
@@ -362,6 +371,7 @@ need more text or more sophisticated placing options, see `script` option from
 `postprocess`.
 
 **Types**: none, simple
+
 **Common options**:
 
 - `text` - The text to be displayed. Note that you can escape `;` via `\`
@@ -380,11 +390,12 @@ need more text or more sophisticated placing options, see `script` option from
 - `thickness` - stroke thickness. Default `0.3mm`.
 - `layer` - specify text layer
 
-## Postprocess
+## Post
 
 Finishing touches to the panel.
 
 **Types**: auto
+
 **Common options**:
 
 - `copperfill` - fill tabs and frame with copper (e.g., to save etchant or to

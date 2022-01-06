@@ -1,14 +1,24 @@
-FROM ubuntu:20.04 AS base
+ARG REPO=ubuntu
+FROM $REPO:20.04 AS base
+
+ARG ADDITIONAL_PACKAGES
+ARG ADDITIONAL_PYTHON_PACKAGES
 
 LABEL maintainer="Jan \"yaqwsx\" Mrázek" \
       description="Container for running KiKit applications"
 
 ENV DISPLAY=unix:0.0
 
-RUN export DEBIAN_FRONTEND="noninteractive" && apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get install -y software-properties-common $ADDITIONAL_PACKAGES && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN add-apt-repository --yes ppa:kicad/kicad-6.0-releases
+
+RUN export DEBIAN_FRONTEND="noninteractive" && apt-get -qq update && \
+    apt-get -qq install -y --no-install-recommends \
       kicad kicad-libraries zip inkscape make git libmagickwand-dev \
-      python3 python3-pip python3-wheel python3-setuptools inkscape \
+      python3 $ADDITIONAL_PYTHON_PACKAGES python3-pip python3-wheel python3-setuptools inkscape \
       libgraphicsmagick1-dev libmagickcore-dev openscad && \
       rm -rf /var/lib/apt/lists/*
 
@@ -16,8 +26,8 @@ RUN export DEBIAN_FRONTEND="noninteractive" && apt-get update && \
 # for repetitive builds
 
 RUN pip3 install \
-    "Pcbdraw ~= 0.6" \
-    "numpy ~= 1.20" \
+    "Pcbdraw ~= 0.9" \
+    "numpy ~= 1.21.5" \
     "shapely ~= 1.7" \
     "click ~= 7.1" \
     "markdown2 ~= 2.4" \
@@ -31,7 +41,7 @@ COPY . /src/kikit
 WORKDIR /src/kikit
 RUN python3 setup.py install
 
-# the final stage only takes the installed packages from dist-packages 
+# the final stage only takes the installed packages from dist-packages
 # and ignores the src directories
 FROM base
 COPY --from=build \

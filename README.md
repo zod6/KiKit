@@ -1,5 +1,7 @@
 # KiKit – Automation for KiCAD
 
+![KiKit Logo](https://github.com/yaqwsx/KiKit/raw/master/kikit/resources/graphics/kikitIcon_64x64.png)
+
 KiKit is a Python library, KiCAD plugin and  a CLI tool to automate several
 tasks in a standard KiCAD workflow like:
 
@@ -14,11 +16,19 @@ tasks in a standard KiCAD workflow like:
 
 ## Do You Enjoy KiKit or Does It Save You Time?
 
-[![ko-fi](https://www.ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E1E2181LU)
+Then definitely consider:
+- [**supporting me on GitHub Sponsors**](https://github.com/sponsors/yaqwsx)
+- or become my [Patreon](https://patreon.com/yaqwsx),
+- or buy me a coffee: [![ko-fi](https://www.ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E1E2181LU)
 
-# KiKit is currently undergoing large changes. If you use stable version read!
+Your support will allow me to allocate time to properly maintain my projects
+like this.
 
-The documentation for latest stable (v0.7) is available at [https://github.com/yaqwsx/KiKit/tree/v0.7](https://github.com/yaqwsx/KiKit/tree/v0.7)
+PS: Be sure to check out my other KiCAD & PCB related projects:
+
+- [Pinion](https://github.com/yaqwsx/Pinion/)
+- [PcbDraw](https://github.com/yaqwsx/PcbDraw/)
+- [JlcParts](https://github.com/yaqwsx/jlcparts)
 
 ## Installation
 
@@ -29,21 +39,10 @@ therefore, you can install it via pip:
 pip3 install kikit
 ```
 
-If you would like to test the upstream version (which can have more features
-implemented but is not guaranteed to be fully tested), you can install it via:
+Then you can install the Pcbnew action plugins via KiCAD's PCM.
 
-```
-pip3 install git+https://github.com/yaqwsx/KiKit@master
-```
-
-Note that if you have a stable version installed, you need to add `--force` to
-upgrade it to upstream.
-
-Note that to use [KiCAD GUI plugins](doc/plugins.md), you have to enable them –
-see the [installation guide](doc/installation.md) for more details.
-
-If you would like to use KiKit on Windows or MacOS, see the [installation
-guide](doc/installation.md).
+For more detailed instructions with steps to enable GUI plugins, please see the
+[installation guide](doc/installation.md).
 
 ## Why Should I Use It?
 
@@ -86,8 +85,9 @@ KiKit](https://roboticsbrno.github.io/RB0002-BatteryPack).
 
 Read the [CLI documentation](doc/cli.md) and the [panelize
 documentation](doc/panelization.md). Also don't miss the
-[examples](doc/examples.md). If you are interested in generating solder paste
-stencils, see [Stencil documentation](doc/stencil.md)
+[examples](doc/examples.md). There is also a quick not on how to use
+[panelization action plugin](doc/panelizeGui.md). If you are interested in
+generating solder paste stencils, see [Stencil documentation](doc/stencil.md)
 
 ## KiKit Is Broken or Does Not Work as Expected
 

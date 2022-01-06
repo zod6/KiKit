@@ -26,13 +26,14 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-        "numpy",
-        "shapely",
-        "click",
-        "markdown2",
-        "pybars3",
-        "solidpython",
-        "commentjson"
+        "pcbnewTransition==0.2.0",
+        "numpy>=1.21",
+        "shapely>=1.7",
+        "click>=7.1",
+        "markdown2>=2.4",
+        "pybars3>=0.9",
+        "solidpython>=1.1.2",
+        "commentjson>=0.9"
     ],
     setup_requires=[
         "versioneer"

@@ -6,7 +6,7 @@ Generate documentation in markdown format for examples
 
 import sys
 from kikit.doc import runBoardExample, runBoardExampleJoin
-from kikit.pcbnew_compatibility import pcbnew
+from pcbnewTransition import pcbnew
 
 counter = 0
 
@@ -64,6 +64,10 @@ command into multiple lines. Also note that there are single quotes around the
 key-value pair – again, to make shell happy and to interpret a string with
 spaces as a single option.
 
+Note that **on Windows you have the enter the commands into KiCAD Command
+Prompt** instead of the regular Command Prompt. You can find it under the Start
+menu.
+
 Also note that KiKit accepts all options in categories (e.g., `layout`, `tabs`,
 `cuts`, ...). You can specify the parameters as a semicolon-separated key-value
 list. To learn about the precise syntax of the CLI and about all options, please
@@ -89,7 +93,8 @@ How to include the missing components?
 - specify `--source 'tolerance: 10mm'` to enlarge the board outline bounding box
   by e.g. 10 mm. The default value is 5 mm.
 
-I told you that the panel above is not suitable for manufacturing. Let's see why:
+I told you that the panel above is not suitable for manufacturing. Let's see
+why:
 """)
 
 runBoardExample(autoName(),
@@ -269,6 +274,33 @@ print("""
 There are many options for text and fiducials. Be sure to read the [full
 documentation](panelizeCli.md).
 
+If you have an automatic feeder in your PNP machine or you just dislike
+sharp corners, you can add a chamfer or a fillet to the panel frame/rails:
+""")
+
+runBoardExample(autoName(),
+    [["panelize"],
+        ["--layout", "grid; rows: 2; cols: 2; space: 2mm"],
+        ["--tabs", "fixed; width: 3mm; vcount: 2"],
+        ["--cuts", "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm"],
+        ["--framing", "railstb; width: 5mm; space: 3mm; fillet: 1mm"],
+        ["--tooling", "3hole; hoffset: 2.5mm; voffset: 2.5mm; size: 1.5mm"],
+        ["--fiducials", "3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;"],
+        ["--post", "millradius: 1mm"],
+        [SRC]])
+
+runBoardExample(autoName(),
+    [["panelize"],
+        ["--layout", "grid; rows: 2; cols: 2; space: 2mm"],
+        ["--tabs", "fixed; width: 3mm; vcount: 2"],
+        ["--cuts", "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm"],
+        ["--framing", "railstb; width: 5mm; space: 3mm; chamfer: 1mm"],
+        ["--tooling", "3hole; hoffset: 2.5mm; voffset: 2.5mm; size: 1.5mm"],
+        ["--fiducials", "3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;"],
+        ["--post", "millradius: 1mm"],
+        [SRC]])
+
+print("""
 # Advanced features & layouts
 
 It is possible that you have some critical features you want to avoid with tabs.

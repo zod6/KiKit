@@ -1,11 +1,12 @@
 from shapely import geometry
 from shapely.geometry import (Polygon, MultiPolygon, LineString,
     MultiLineString, LinearRing, Point)
-from shapely.ops import unary_union, split, nearest_points
+from shapely.geometry.collection import GeometryCollection
+from shapely.ops import orient, unary_union, split, nearest_points
 import shapely
 import numpy as np
 from kikit.intervals import Interval, BoxNeighbors, BoxPartitionLines
-from kikit.pcbnew_compatibility import pcbnew
+from pcbnewTransition import pcbnew, isV6
 from enum import IntEnum
 from itertools import product
 
@@ -22,20 +23,37 @@ class PositionError(RuntimeError):
 class NoIntersectionError(RuntimeError):
     pass
 
-def toTuple(item):
-    if isinstance(item, pcbnew.wxPoint):
-        return item[0], item[1]
-    raise NotImplementedError(f"toTuple for {type(item)} not implemented")
-
 def roundPoint(point, precision=-4):
+    return (round(point[0], precision), round(point[1], precision))
     return pcbnew.wxPoint(round(point[0], precision), round(point[1], precision))
 
 def getStartPoint(geom):
+    if isV6():
+        if geom.GetShape() == STROKE_T.S_CIRCLE:
+            # Circle start is circle center /o\
+            point = geom.GetStart() + pcbnew.wxPoint(geom.GetRadius(), 0)
+        elif geom.GetShape() == STROKE_T.S_RECT:
+            point = geom.GetStart()
+        else:
+            point = geom.GetStart()
+        return roundPoint(point)
+
     if geom.GetShape() in [STROKE_T.S_ARC, STROKE_T.S_CIRCLE]:
         return roundPoint(geom.GetArcStart())
     return roundPoint(geom.GetStart())
 
 def getEndPoint(geom):
+    if isV6():
+        if geom.GetShape() == STROKE_T.S_CIRCLE:
+            # Circle start is circle center /o\
+            point = geom.GetStart() + pcbnew.wxPoint(geom.GetRadius(), 0)
+        elif geom.GetShape() == STROKE_T.S_RECT:
+            # Rectangle is closed, so it starts at the same point as it ends
+            point = geom.GetStart()
+        else:
+            point = geom.GetEnd()
+        return roundPoint(point)
+
     if geom.GetShape() == STROKE_T.S_ARC:
         return roundPoint(geom.GetArcEnd())
     if geom.GetShape() == STROKE_T.S_CIRCLE:
@@ -61,7 +79,7 @@ def findRing(startIdx, geometryList, coincidencePoints, unused):
         return ring
     currentPoint = getEndPoint(geometryList[startIdx])
     while True:
-        nextIdx = coincidencePoints[toTuple(currentPoint)].getNeighbor(ring[-1])
+        nextIdx = coincidencePoints[currentPoint].getNeighbor(ring[-1])
         assert(unused[nextIdx] or nextIdx == startIdx)
         if currentPoint == getStartPoint(geometryList[nextIdx]):
             currentPoint = getEndPoint(geometryList[nextIdx])
@@ -91,9 +109,9 @@ def extractRings(geometryList):
         if not isValidPcbShape(geom):
             invalidGeometry.append(i)
             continue
-        start = toTuple(roundPoint(getStartPoint(geom)))
+        start = roundPoint(getStartPoint(geom))
         coincidencePoints.setdefault(start, CoincidenceList()).append(i)
-        end = toTuple(roundPoint(getEndPoint(geom)))
+        end = roundPoint(getEndPoint(geom))
         coincidencePoints.setdefault(end, CoincidenceList()).append(i)
     for point, items in coincidencePoints.items():
         l = len(items)
@@ -132,7 +150,7 @@ def approximateArc(arc, endWith):
         endAngle = startAngle + 360
         segments = SEGMENTS_PER_FULL
     else:
-        endAngle = startAngle + arc.GetAngle() / 10
+        endAngle = startAngle + arc.GetArcAngle() / 10
         segments = abs(int((endAngle - startAngle) * SEGMENTS_PER_FULL // 360))
     theta = np.radians(np.linspace(startAngle, endAngle, segments))
     x = arc.GetCenter()[0] + arc.GetRadius() * np.cos(theta)
@@ -184,6 +202,14 @@ def approximateBezier(bezier, endWith):
 
     return outline
 
+def createRectangle(rect):
+    """
+    Take PCB_SHAPE and convert it into outline
+    """
+    tl = rect.GetStart()
+    br = rect.GetEnd()
+    return [tl, (br[0], tl[1]), br, (tl[0], br[1]), tl]
+
 def toShapely(ring, geometryList):
     """
     Take a list indices representing a ring from PCB_SHAPE entities and
@@ -199,6 +225,8 @@ def toShapely(ring, geometryList):
         elif shape in [STROKE_T.S_CURVE]:
             outline += approximateBezier(geometryList[idxA],
                 commonEndPoint(geometryList[idxA], geometryList[idxB]))[1:]
+        elif shape in [STROKE_T.S_RECT]:
+            outline += createRectangle(geometryList[idxA])
         elif shape in [STROKE_T.S_SEGMENT]:
             outline.append(commonEndPoint(geometryList[idxA], geometryList[idxB]))
         else:
@@ -332,15 +360,20 @@ def biteBoundary(boundary, pointA, pointB, tolerance=fromMm(0.01)):
         boundaryCoords = boundary.coords
     boundaryCoords = list(boundaryCoords)
     faceCoords = []
-    targetPoint = pointA
+    targetPoint = (pointA.x, pointA.y)
     inCut = False
     for a, b in zip(boundaryCoords, islice(boundaryCoords, 1, None)):
-        if liesOnSegment(a, b, targetPoint, tolerance):
+        # The following lines limit the number of points we have to test
+        # for relatively expensive liesOnSegment
+        segmentLength = np.linalg.norm((a[0] - b[0], a[1] - b[1]))
+        targetDistance = np.linalg.norm((a[0] - targetPoint[0], a[1] - targetPoint[1]))
+        isCandidate = segmentLength >= targetDistance
+        if isCandidate and liesOnSegment(a, b, targetPoint, tolerance):
             faceCoords.append(targetPoint)
             if inCut:
                 return LineString(faceCoords)
             inCut = True
-            targetPoint = pointB
+            targetPoint = (pointB.x, pointB.y)
             # The pointB might lie on the same segment
             if liesOnSegment(a, b, targetPoint, tolerance):
                 return LineString([pointA, pointB])
@@ -384,6 +417,16 @@ class Substrate:
             self.substrates = shapely.ops.orient(self.substrates)
         self.partitionLine = shapely.geometry.GeometryCollection()
         self.annotations = []
+        self.oriented = True
+
+    def orient(self):
+        """
+        Ensures that the substrate is oriented in a correct way.
+        """
+        if self.oriented:
+            return
+        self.substrates = shapely.ops.orient(self.substrates)
+        self.oriented = True
 
     def bounds(self):
         """
@@ -403,13 +446,19 @@ class Substrate:
             self.substrates = unary_union([self.substrates, other.substrates])
         else:
             self.substrates = unary_union([self.substrates, other])
-        self.substrates = shapely.ops.orient(self.substrates)
+        self.oriented = False
+
+    def cut(self, piece):
+        """
+        Remove a piece of substrate given a shapely polygon.
+        """
+        self.substrates = self.substrates.difference(piece)
 
     def serialize(self):
         """
         Produces a list of PCB_SHAPE on the Edge.Cuts layer
         """
-        if isinstance(self.substrates, MultiPolygon):
+        if isinstance(self.substrates, MultiPolygon) or isinstance(self.substrates, GeometryCollection):
             geoms = self.substrates.geoms
         elif isinstance(self.substrates, Polygon):
             geoms = [self.substrates]
@@ -432,8 +481,8 @@ class Substrate:
             segment = pcbnew.PCB_SHAPE()
             segment.SetShape(STROKE_T.S_SEGMENT)
             segment.SetLayer(Layer.Edge_Cuts)
-            segment.SetStart(roundPoint(a))
-            segment.SetEnd(roundPoint(b))
+            segment.SetStart(wxPoint(*a))
+            segment.SetEnd(wxPoint(*b))
             segments.append(segment)
         return segments
 
@@ -479,6 +528,8 @@ class Substrate:
         Returns a pair tab and cut outline. Add the tab it via union - batch
         adding of geometry is more efficient.
         """
+        self.orient()
+
         origin = np.array(origin)
         direction = normalize(direction)
         sideOriginA = origin + makePerpendicular(direction) * width / 2
@@ -528,7 +579,13 @@ class Substrate:
         """
         if millRadius < SHP_EPSILON:
             return
-        self.substrates = self.substrates.buffer(millRadius - SHP_EPSILON).buffer(-millRadius).buffer(SHP_EPSILON)
+        self.orient()
+        RES = 64
+        EPS = fromMm(0.01)
+        self.substrates = self.substrates.buffer(millRadius - EPS, resolution=RES) \
+                              .buffer(-millRadius, resolution=RES) \
+                              .buffer(EPS, resolution=RES)
+
 
     def removeIslands(self):
         """
@@ -549,6 +606,7 @@ class Substrate:
             if ismainland:
                 mainland.append(substrate)
         self.substrates = shapely.geometry.collection.GeometryCollection(mainland)
+        self.oriented = False
 
     def isSinglePiece(self):
         """
@@ -627,8 +685,9 @@ class SubstratePartitionLines:
                  safeHorizontalMargin=0, safeVerticalMargin=0):
         boxes = {id(s): s.bounds() for s in chain(substrates, ghostSubstrates)}
         ghosts = set([id(s) for s in ghostSubstrates])
+        SEED_LIMIT_SIZE = pcbnew.FromMM(0.01)
         def seedFilter(idA, idB, v, l):
-            if l.length < SHP_EPSILON:
+            if l.length < SEED_LIMIT_SIZE:
                 return False
             return idA not in ghosts or idB not in ghosts
         self._partition = BoxPartitionLines(

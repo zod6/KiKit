@@ -1,4 +1,4 @@
-from kikit.pcbnew_compatibility import pcbnew
+from pcbnewTransition import pcbnew, isV6
 from kikit.intervals import Interval, AxialLine
 from pcbnew import wxPoint, wxRect
 import os
@@ -9,7 +9,7 @@ import shapely.geometry
 
 PKG_BASE = os.path.dirname(__file__)
 KIKIT_LIB = os.path.join(PKG_BASE, "resources/kikit.pretty")
-SHP_EPSILON = pcbnew.FromMM(0.01) # Common factor of enlarging substrates to
+SHP_EPSILON = pcbnew.FromMM(0.001) # Common factor of enlarging substrates to
                                   # cover up numerical imprecisions of Shapely
 
 def fromDegrees(angle):
@@ -49,6 +49,8 @@ def collectEdges(board, layerName, sourceArea=None):
     for edge in chain(board.GetDrawings(), *[m.GraphicalItems() for m in board.GetFootprints()]):
         if edge.GetLayerName() != layerName:
             continue
+        if isV6() and isinstance(edge, pcbnew.PCB_DIMENSION_BASE):
+            continue
         if not sourceArea or fitsIn(edge.GetBoundingBox(), sourceArea):
             edges.append(edge)
     return edges
@@ -59,7 +61,7 @@ def collectItems(boardCollection, sourceArea):
 
 def collectFootprints(boardCollection, sourceArea):
     """ Returns a list of board footprints fully contained in the source area ignoring reference a value label"""
-    return list([x for x in boardCollection if fitsIn(x.GetFootprintRect(), sourceArea)])
+    return list([x for x in boardCollection if fitsIn(x.GetBoundingBox(False, False), sourceArea)])
 
 def getBBoxWithoutContours(edge):
     width = edge.GetWidth()
@@ -148,9 +150,9 @@ def removeComponents(board, references):
     Remove components with references from the board. References is a list of
     strings
     """
-    for module in board.GetFootprints():
-        if module.GetReference() in references:
-            board.Remove(module)
+    for footprint in board.GetFootprints():
+        if footprint.GetReference() in references:
+            board.Remove(footprint)
 
 def parseReferences(dStr):
     """

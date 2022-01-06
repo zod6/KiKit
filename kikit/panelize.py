@@ -1,9 +1,9 @@
-from kikit import pcbnew_compatibility
-from kikit.pcbnew_compatibility import pcbnew
+from pcbnewTransition import pcbnew, isV6
 from kikit.common import normalize
+
 from pcbnew import (GetBoard, LoadBoard,
     FromMM, ToMM, wxPoint, wxRect, wxRectMM, wxPointMM)
-from enum import Enum, IntEnum
+from enum import Enum
 from shapely.geometry import (Polygon, MultiPolygon, Point, LineString, box,
     GeometryCollection, MultiLineString)
 from shapely.prepared import prep
@@ -11,6 +11,8 @@ import shapely
 from itertools import product, chain
 import numpy as np
 import os
+import json
+from collections import OrderedDict
 
 from kikit import substrate
 from kikit import units
@@ -124,7 +126,7 @@ def collectNetNames(board):
 
 def remapNets(collection, mapping):
     for item in collection:
-        item.SetNetCode(mapping[item.GetNetname()].GetNet())
+        item.SetNetCode(mapping[item.GetNetname()].GetNetCode())
 
 def toPolygon(entity):
     if isinstance(entity, list):
@@ -193,8 +195,9 @@ def removeCutsFromFootprint(footprint):
     for edge in footprint.GraphicalItems():
         if edge.GetLayerName() != "Edge.Cuts":
             continue
-        footprint.Remove(edge)
         edges.append(edge)
+    for e in edges:
+        footprint.Remove(e)
     return edges
 
 def renameNets(board, renamer):
@@ -288,7 +291,7 @@ def readKiKitProps(footprint):
 
     Returns a dictionary of key-value pairs.
     """
-    for x in footprint.GraphicalItemsList():
+    for x in footprint.GraphicalItems():
         if not isinstance(x, pcbnew.FP_TEXT):
             continue
         text = x.GetText()
@@ -373,12 +376,18 @@ class Panel:
     Basic interface for panel building. Instance of this class represents a
     single panel. You can append boards, add substrate pieces, make cuts or add
     holes to the panel. Once you finish, you have to save the panel to a file.
+
+    Since KiCAD 6, the board is coupled with a project files (DRC rules), so
+    we have to specify a filename when creating a panel. Corresponding project
+    file will be created.
     """
-    def __init__(self):
+    def __init__(self, panelFilename):
         """
         Initializes empty panel.
         """
-        self.board = pcbnew.BOARD()
+        self.filename = panelFilename
+        self.board = pcbnew.NewBoard(panelFilename)
+        self.sourcePaths = set() # A set of all board files that were appended to the panel
         self.substrates = [] # Substrates of the individual boards; e.g. for masking
         self.boardSubstrate = Substrate([]) # Keep substrate in internal representation,
                                             # Draw it just before saving
@@ -390,11 +399,13 @@ class Panel:
         self.copperLayerCount = None
         self.zonesToRefill = pcbnew.ZONES()
 
-    def save(self, filename):
+    def save(self):
         """
-        Saves the panel to a file.
+        Saves the panel to a file and makes the requested changes to the prl and
+        pro files.
         """
-        for edge in self.boardSubstrate.serialize():
+        newEdges = self.boardSubstrate.serialize()
+        for edge in newEdges:
             self.board.Add(edge)
         vcuts = self._renderVCutH() + self._renderVCutV()
         keepouts = []
@@ -404,7 +415,7 @@ class Panel:
                 keepouts.append(self.addKeepout(clearanceArea))
         fillerTool = pcbnew.ZONE_FILLER(self.board)
         fillerTool.Fill(self.zonesToRefill)
-        self.board.Save(filename)
+        self.board.Save(self.filename)
         # Remove cuts
         for cut, _ in vcuts:
             self.board.Remove(cut)
@@ -412,11 +423,79 @@ class Panel:
         for keepout in keepouts:
             self.board.Remove(keepout)
         # Remove edges
-        for edge in collectEdges(self.board, "Edge.Cuts"):
+        for edge in newEdges:
             self.board.Remove(edge)
+
+        if isV6():
+            self.makeLayersVisible() # as they are not in KiCAD 6
+            self.mergeDrcRules()
 
     def _uniquePrefix(self):
         return "Board_{}-".format(len(self.substrates))
+
+    def getProFilepath(self, path=None):
+        if path == None:
+            p = self.filename
+        else:
+            p = path
+        return os.path.splitext(p)[0]+'.kicad_pro'
+
+    def getPrlFilepath(self, path=None):
+        if path == None:
+            p = self.filename
+        else:
+            p = path
+        return os.path.splitext(p)[0]+'.kicad_prl'
+
+    def makeLayersVisible(self):
+        """
+        Modify corresponding *.prl files so all the layers are visible by
+        default
+        """
+        assert isV6()
+        try:
+            with open(self.getPrlFilepath()) as f:
+                # We use ordered dict, so we preserve the ordering of the keys and
+                # thus, formatting
+                prl = json.load(f, object_pairs_hook=OrderedDict)
+            prl["board"]["visible_layers"] = "fffffff_ffffffff"
+            with open(self.getPrlFilepath(), "w") as f:
+                json.dump(prl, f, indent=2)
+        except IOError:
+            # The PRL file is not always created, ignore it
+            pass
+
+    def mergeDrcRules(self):
+        """
+        Examine DRC rules of the source boards, merge them into a single set of
+        rules and store them in *.pro file
+        """
+        assert isV6()
+
+        if len(self.sourcePaths) > 1:
+            raise RuntimeError("Merging of DRC rules of multiple boards is currently unsupported")
+        if len(self.sourcePaths) == 0:
+            return # Nothing to merge
+
+        sPath = list(self.sourcePaths)[0]
+        try:
+            with open(self.getProFilepath(sPath)) as f:
+                sourcePro = json.load(f)
+        except IOError:
+            # This means there is no original project file. Probably comes from
+            # v5, thus there is nothing to transfer
+            return
+        try:
+            with open(self.getProFilepath()) as f:
+                currentPro = json.load(f, object_pairs_hook=OrderedDict)
+            currentPro["board"]["design_settings"] = sourcePro["board"]["design_settings"]
+            with open(self.getProFilepath(), "w") as f:
+                json.dump(currentPro, f, indent=2)
+        except KeyError:
+            # This means the source board has no DRC setting. Probably a board
+            # without attached project
+            pass
+
 
     def inheritDesignSettings(self, boardFilename):
         """
@@ -426,10 +505,14 @@ class Panel:
         self.setDesignSettings(b.GetDesignSettings())
 
     def setDesignSettings(self, designSettings):
-        """
+        """GetDesignSettings
         Set design settings
         """
-        self.board.SetDesignSettings(designSettings)
+        if isV6():
+            d = self.board.GetDesignSettings()
+            d.CloneFrom(designSettings)
+        else:
+            self.board.SetDesignSettings(designSettings)
 
     def inheritProperties(self, boardFilename):
         """
@@ -447,7 +530,7 @@ class Panel:
     def appendBoard(self, filename, destination, sourceArea=None,
                     origin=Origin.Center, rotationAngle=0, shrink=False,
                     tolerance=0, bufferOutline=fromMm(0.001), netRenamer=None,
-                    refRenamer=None):
+                    refRenamer=None, inheritDrc=True, interpretAnnotations=True):
         """
         Appends a board to the panel.
 
@@ -464,12 +547,18 @@ class Panel:
 
         You can also specify functions which will rename the net and ref names.
         By default, nets are renamed to "Board_{n}-{orig}", refs are unchanged.
-        The renamers are given board seq number and original name
+        The renamers are given board seq number and original name.
+
+        You can also decide whether you would like to inherit design rules from
+        this boards or not.
 
         Returns bounding box (wxRect) of the extracted area placed at the
         destination and the extracted substrate of the board.
         """
         board = LoadBoard(filename)
+        if inheritDrc:
+            self.sourcePaths.add(filename)
+
         thickness = board.GetDesignSettings().GetBoardThickness()
         if len(self.substrates) == 0:
             self.board.GetDesignSettings().SetBoardThickness(thickness)
@@ -509,14 +598,14 @@ class Panel:
             # the attribute must be first removed without changing the
             # orientation of the text.
             for item in (*footprint.GraphicalItems(), footprint.Value(), footprint.Reference()):
-                if isinstance(item, pcbnew.TEXTE_MODULE) and item.IsKeepUpright():
+                if isinstance(item, pcbnew.FP_TEXT) and item.IsKeepUpright():
                     actualOrientation = item.GetDrawRotation()
                     item.SetKeepUpright(False)
                     item.SetTextAngle(actualOrientation - footprint.GetOrientation())
             footprint.Rotate(originPoint, rotationAngle)
             footprint.Move(translation)
             edges += removeCutsFromFootprint(footprint)
-            if isAnnotation(footprint):
+            if interpretAnnotations and isAnnotation(footprint):
                 annotations.extend(convertToAnnotation(footprint))
             else:
                 appendItem(self.board, footprint)
@@ -839,9 +928,9 @@ class Panel:
         Add a drilled non-plated hole to the position (`wxPoint`) with given
         diameter. The paste option allows to place the hole on the paste layers.
         """
-        module = pcbnew.PCB_IO().FootprintLoad(KIKIT_LIB, "NPTH")
-        module.SetPosition(position)
-        for pad in module.Pads():
+        footprint = pcbnew.FootprintLoad(KIKIT_LIB, "NPTH")
+        footprint.SetPosition(position)
+        for pad in footprint.Pads():
             pad.SetDrillSize(pcbnew.wxSize(diameter, diameter))
             pad.SetSize(pcbnew.wxSize(diameter, diameter))
             if paste:
@@ -849,7 +938,7 @@ class Panel:
                 layerSet.AddLayer(Layer.F_Paste)
                 layerSet.AddLayer(Layer.B_Paste)
                 pad.SetLayerSet(layerSet)
-        self.board.Add(module)
+        self.board.Add(footprint)
 
     def addFiducial(self, position, copperDiameter, openingDiameter, bottom=False):
         """
@@ -857,18 +946,22 @@ class Panel:
         with given copperDiameter and openingDiameter. By setting bottom to True, the fiducial
         is placed on bottom side.
         """
-        module = pcbnew.PCB_IO().FootprintLoad(KIKIT_LIB, "Fiducial")
-        module.SetPosition(position)
+        footprint = pcbnew.FootprintLoad(KIKIT_LIB, "Fiducial")
+        # As of V6, the footprint first needs to be added to the board,
+        # then we can change its properties. Otherwise, it misses parent pointer
+        # and KiCAD crashes.
+        self.board.Add(footprint)
+        footprint.SetPosition(position)
         if(bottom):
-            if pcbnew_compatibility.isV6(pcbnew_compatibility.pcbnewVersion):
-                module.Flip(position, False)
+            if isV6():
+                footprint.Flip(position, False)
             else:
-                module.Flip(position)
-        for pad in module.Pads():
+                footprint.Flip(position)
+        for pad in footprint.Pads():
             pad.SetSize(pcbnew.wxSize(copperDiameter, copperDiameter))
             pad.SetLocalSolderMaskMargin(int((openingDiameter - copperDiameter) / 2))
             pad.SetLocalClearance(int((openingDiameter - copperDiameter) / 2))
-        self.board.Add(module)
+
 
     def panelCorners(self, horizontalOffset=0, verticalOffset=0):
         """
@@ -952,7 +1045,7 @@ class Panel:
         """
         Add tab annotations for the individual substrates based on their
         bounding boxes. Assign tabs annotations to the edges of the bounding
-        box. You provides a function countFn, widthFn that take edge length and
+        box. You provide a function countFn, widthFn that take edge length and
         direction that return number of tabs per edge or tab width
         respectively.
 
@@ -1025,7 +1118,7 @@ class Panel:
                 self.substrates[i].annotations.append(a)
 
 
-    def buildFullTabs(self):
+    def buildFullTabs(self, framingOffsets):
         """
         Make full tabs. This strategy basically cuts the bounding boxes of the
         PCBs. Not suitable for mousebites. Expects there is a valid partition
@@ -1048,6 +1141,19 @@ class Panel:
         substrateBoundaries = [linestringToSegments(rectToShpBox(s.boundingBox()).exterior)
             for s in self.substrates]
         substrateCuts = [LineString(x) for x in chain(*substrateBoundaries)]
+
+        # Remove outer edges (if any)
+        vspace, hspace = framingOffsets
+        xvalues = list(chain(*[map(lambda x: x[0], line.coords) for line in substrateCuts]))
+        yvalues = list(chain(*[map(lambda x: x[1], line.coords) for line in substrateCuts]))
+        minx, maxx = min(xvalues), max(xvalues)
+        miny, maxy = min(yvalues), max(yvalues)
+
+        substrateCuts = [x for x in substrateCuts if not (
+            (hspace is None and x.coords[0][0] == x.coords[1][0] and x.coords[0][0] in [minx, maxx]) or
+            (vspace is None and x.coords[0][1] == x.coords[1][1] and x.coords[0][1] in [miny, maxy])
+        )]
+
         return substrateCuts
 
     def inheritCopperLayers(self, board):
@@ -1098,7 +1204,7 @@ class Panel:
         polygon. Return the keepout area.
         """
         zone = polygonToZone(area, self.board)
-        zone.SetIsKeepout(True)
+        zone.SetIsRuleArea(True)
         zone.SetDoNotAllowTracks(noTracks)
         zone.SetDoNotAllowVias(noVias)
         zone.SetDoNotAllowCopperPour(noCopper)
@@ -1124,7 +1230,7 @@ class Panel:
         textObject.SetText(text)
         textObject.SetTextX(position[0])
         textObject.SetTextY(position[1])
-        textObject.SetThickness(thickness)
+        textObject.SetTextThickness(thickness)
         textObject.SetTextSize(pcbnew.wxSize(width, height))
         textObject.SetHorizJustify(hJustify)
         textObject.SetVertJustify(vJustify)
@@ -1296,6 +1402,29 @@ class Panel:
         backbones = list([b.buffer(SHP_EPSILON, join_style=2) for b in pieces])
         self.appendSubstrate(backbones)
         return cuts
+
+    def addCornerFillets(self, radius):
+        corners = self.panelCorners(-SHP_EPSILON, -SHP_EPSILON)
+        filletOrigins = self.panelCorners(radius, radius)
+        for corner, opposite in zip(corners, filletOrigins):
+            square = shapely.geometry.box(
+                min(corner[0], opposite[0]),
+                min(corner[1], opposite[1]),
+                max(corner[0], opposite[0]),
+                max(corner[1], opposite[1])
+            )
+            filletCircle = Point(opposite).buffer(radius + SHP_EPSILON, resolution=16)
+
+            cutShape = square.difference(filletCircle)
+            self.boardSubstrate.cut(cutShape)
+
+    def addCornerChamfers(self, size):
+        corners = self.panelCorners(-SHP_EPSILON, -SHP_EPSILON)
+        verticalStops = self.panelCorners(-SHP_EPSILON, size)
+        horizontalStops = self.panelCorners(size, -SHP_EPSILON)
+        for t, v, h in zip(corners, verticalStops, horizontalStops):
+            cutPoly = Polygon([t, v, h, t])
+            self.boardSubstrate.cut(cutPoly)
 
 def getFootprintByReference(board, reference):
     """

@@ -2,12 +2,51 @@ import csv
 from dataclasses import dataclass
 import re
 from typing import OrderedDict
-from  kikit.pcbnew_compatibility import pcbnew
+from pcbnewTransition import pcbnew, isV6
 from math import sin, cos, radians
 from kikit.common import *
 from kikit.defs import MODULE_ATTR_T
-from kikit.eeshema import getField
+from kikit.drc_ui import ReportLevel
+from kikit import drc
+from kikit import eeschema, eeschema_v6
+import sys
 
+if isV6():
+    from kikit import eeschema_v6 # import getField, getUnit, getReference
+from kikit import eeschema #import getField, getUnit, getReference
+
+# A user can still supply v5 schematics even when we run v6, therefore,
+# we have to load the correct schematics and provide the right getters
+def extractComponents(filename):
+    if filename.endswith(".kicad_sch"):
+        return eeschema_v6.extractComponents(filename)
+    if filename.endswith(".sch"):
+        return eeschema.extractComponents(filename)
+    raise RuntimeError(f"Unknown schematic file type specified: {filename}")
+
+def getUnit(component):
+    if isinstance(component, eeschema_v6.Symbol):
+        return eeschema_v6.getUnit(component)
+    return eeschema.getUnit(component)
+
+def getField(component, field):
+    if isinstance(component, eeschema_v6.Symbol):
+        return eeschema_v6.getField(component, field)
+    return eeschema.getField(component, field)
+
+def getReference(component):
+    if isinstance(component, eeschema_v6.Symbol):
+        return eeschema_v6.getReference(component)
+    return eeschema.getReference(component)
+
+
+def ensurePassingDrc(board):
+    if not isV6():
+        return # v5 cannot check DRC
+    failed = drc.runImpl(board, True, False, ReportLevel.error, lambda x: print(x))
+    if failed:
+        print("DRC failed. See report above. No files produced")
+        sys.exit(1)
 
 def hasNonSMDPins(footprint):
     for pad in footprint.Pads():
@@ -103,6 +142,12 @@ def applyCorrectionPattern(correctionPatterns, footprint):
             return (corpat.x_correction, corpat.y_correction, corpat.rotation)
     return (0, 0, 0)
 
+def excludeFromPos(footprint):
+    if isV6():
+        return footprint.GetAttributes() & pcbnew.FP_EXCLUDE_FROM_POS_FILES
+    else:
+        return footprint.GetAttributes() & MODULE_ATTR_T.MOD_VIRTUAL
+
 def collectPosData(board, correctionFields, posFilter=lambda x : True,
                    footprintX=defaultFootprintX, footprintY=defaultFootprintY, bom=None,
                    correctionFile=None):
@@ -118,18 +163,18 @@ def collectPosData(board, correctionFields, posFilter=lambda x : True,
     if bom is None:
         bom = {}
     else:
-        bom = { comp["reference"]: comp for comp in bom }
+        bom = { getReference(comp): comp for comp in bom }
 
     correctionPatterns = []
     if correctionFile is not None:
         correctionPatterns = readCorrectionPatterns(correctionFile)
 
     footprints = []
-    placeOffset = board.GetDesignSettings().m_AuxOrigin
+    placeOffset = board.GetDesignSettings().GetAuxOrigin()
     for footprint in board.GetFootprints():
         if len(bom)>0 and footprint.GetReference() not in bom:
             continue
-        if footprint.GetAttributes() & MODULE_ATTR_T.MOD_VIRTUAL:
+        if excludeFromPos(footprint):
             continue
         if posFilter(footprint) and footprint.GetReference() in bom:
             footprints.append(footprint)

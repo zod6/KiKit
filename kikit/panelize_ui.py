@@ -31,7 +31,7 @@ class Section(click.ParamType):
     def convert(self, value, param, ctx):
         if len(value.strip()) == 0:
             self.fail(f"{value} is not a valid argument specification",
-                param, ct)
+                param, ctx)
         try:
             values = {}
             for i, pair in enumerate(splitStr(";", "\\", value)):
@@ -153,51 +153,13 @@ def panelize(input, output, preset, layout, source, tabs, cuts, framing,
     try:
         # Hide the import in the function to make KiKit start faster
         from kikit import panelize_ui_impl as ki
-        from kikit.panelize import Panel
-        from pcbnew import LoadBoard, wxPointMM
-        import json
-        import commentjson
         import sys
-        from itertools import chain
-
 
         preset = ki.obtainPreset(preset,
             layout=layout, source=source, tabs=tabs, cuts=cuts, framing=framing,
             tooling=tooling, fiducials=fiducials, text=text, post=post, debug=debug)
 
-        board = LoadBoard(input)
-
-        panel = Panel()
-        panel.inheritDesignSettings(input)
-        panel.inheritProperties(input)
-
-        sourceArea = ki.readSourceArea(preset["source"], board)
-        substrates = ki.buildLayout(preset["layout"], panel, input, sourceArea)
-        framingSubstrates = ki.dummyFramingSubstrate(substrates,
-            ki.frameOffset(preset["framing"]))
-        panel.buildPartitionLineFromBB(framingSubstrates)
-
-        tabCuts = ki.buildTabs(preset["tabs"], panel, substrates,
-            framingSubstrates)
-        backboneCuts = ki.buildBackBone(preset["layout"], panel, substrates,
-            ki.frameOffset(preset["framing"]))
-        frameCuts = ki.buildFraming(preset["framing"], panel)
-
-        ki.buildTooling(preset["tooling"], panel)
-        ki.buildFiducials(preset["fiducials"], panel)
-        ki.buildText(preset["text"], panel)
-        ki.buildPostprocessing(preset["post"], panel)
-
-        ki.makeTabCuts(preset["cuts"], panel, tabCuts)
-        ki.makeOtherCuts(preset["cuts"], panel, chain(backboneCuts, frameCuts))
-
-        ki.setStackup(preset["source"], panel)
-
-        ki.runUserScript(preset["post"], panel)
-
-        ki.buildDebugAnnotation(preset["debug"], panel)
-
-        panel.save(output)
+        doPanelization(input, output, preset)
 
         if (dump):
             with open(dump, "w") as f:
@@ -210,6 +172,55 @@ def panelize(input, output, preset, layout, source, tabs, cuts, framing,
             traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
+def doPanelization(input, output, preset):
+    """
+    The panelization logic is separated into a separate function so we can
+    handle errors based on the context; e.g., CLI vs GUI
+    """
+    from kikit import panelize_ui_impl as ki
+    from kikit.panelize import Panel
+    from pcbnewTransition.transition import isV6, pcbnew
+    from pcbnew import LoadBoard
+    from itertools import chain
+
+    if preset["debug"]["deterministic"] and isV6():
+        pcbnew.KIID.SeedGenerator(42)
+
+    board = LoadBoard(input)
+
+    panel = Panel(output)
+    panel.inheritDesignSettings(input)
+    panel.inheritProperties(input)
+
+    sourceArea = ki.readSourceArea(preset["source"], board)
+    substrates = ki.buildLayout(preset["layout"], panel, input, sourceArea)
+    framingSubstrates = ki.dummyFramingSubstrate(substrates,
+        ki.frameOffset(preset["framing"]))
+    panel.buildPartitionLineFromBB(framingSubstrates)
+
+    tabCuts = ki.buildTabs(preset["tabs"], panel, substrates,
+        framingSubstrates, ki.frameOffset(preset["framing"]))
+    backboneCuts = ki.buildBackBone(preset["layout"], panel, substrates,
+        ki.frameOffset(preset["framing"]))
+    frameCuts = ki.buildFraming(preset["framing"], panel)
+
+    ki.buildTooling(preset["tooling"], panel)
+    ki.buildFiducials(preset["fiducials"], panel)
+    ki.buildText(preset["text"], panel)
+    ki.buildPostprocessing(preset["post"], panel)
+
+    ki.makeTabCuts(preset["cuts"], panel, tabCuts)
+    ki.makeOtherCuts(preset["cuts"], panel, chain(backboneCuts, frameCuts))
+
+    ki.setStackup(preset["source"], panel)
+
+    ki.runUserScript(preset["post"], panel)
+
+    ki.buildDebugAnnotation(preset["debug"], panel)
+
+    panel.save()
+
+
 @click.command()
 @click.argument("input", type=click.Path(dir_okay=False))
 @click.argument("output", type=click.Path(dir_okay=False))
@@ -217,7 +228,9 @@ def panelize(input, output, preset, layout, source, tabs, cuts, framing,
     help="Specify source settings.")
 @click.option("--debug", type=Section(),
     help="Include debug traces or drawings in the panel.")
-def separate(input, output, source, debug):
+@click.option("--keepAnnotations/--stripAnnotations", default=True,
+    help="Do not strip annotations" )
+def separate(input, output, source, debug, keepannotations):
     """
     Separate a single board out of a multi-board design. The separated board is
     placed in the middle of the sheet.
@@ -228,20 +241,25 @@ def separate(input, output, source, debug):
     try:
         from kikit import panelize_ui_impl as ki
         from kikit.panelize import Panel
+        from pcbnewTransition.transition import isV6, pcbnew
         from pcbnew import LoadBoard, wxPointMM
 
         preset = ki.obtainPreset([], validate=False, source=source, debug=debug)
 
+        if preset["debug"]["deterministic"] and isV6():
+            pcbnew.KIID.SeedGenerator(42)
+
         board = LoadBoard(input)
         sourceArea = ki.readSourceArea(preset["source"], board)
 
-        panel = Panel()
+        panel = Panel(output)
         panel.inheritDesignSettings(input)
         panel.inheritProperties(input)
         destination = wxPointMM(150, 100)
-        panel.appendBoard(input, destination, sourceArea)
+        panel.appendBoard(input, destination, sourceArea,
+            interpretAnnotations=(not keepannotations))
         ki.setStackup(preset["source"], panel)
-        panel.save(output)
+        panel.save()
     except Exception as e:
         import sys
         sys.stderr.write("An error occurred: " + str(e) + "\n")
