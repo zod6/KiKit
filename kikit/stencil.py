@@ -279,7 +279,18 @@ def makeBottomRegister(board, jigFrameSize, jigThickness, pcbThickness,
 def renderScad(infile, outfile):
     infile = os.path.abspath(infile)
     outfile = os.path.abspath(outfile)
-    subprocess.check_call(["openscad", "-o", outfile, infile])
+    try:
+        subprocess.run(["openscad", "-o", outfile, infile],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    except subprocess.CalledProcessError as e:
+        message = f"Cannot render {outfile}, OpenSCAD error:\n"
+        message += (e.stdout.decode("utf-8") + "\n") if e.stdout is not None else ""
+        message += (e.stderr.decode("utf-8") + "\n") if e.stderr is not None else ""
+        raise RuntimeError(message)
+    except FileNotFoundError as e:
+        message = f"OpenSCAD is not available.\n"
+        message += f"Did you install it? Program `openscad` has to be in PATH"
+        raise RuntimeError(message)
 
 def shapelyToSHAPE_POLY_SET(polygon):
     p = pcbnew.SHAPE_POLY_SET()
@@ -460,6 +471,13 @@ def createPrinted(inputboard, outputdir, pcbthickness, thickness, framewidth,
     # versions.
     height = min(pcbthickness, max(0.5, pcbthickness - 0.3))
     bottomPaste, topPaste, outline = pasteDxfExport(board, outputdir)
+    # On Windows, OpenSCAD requires to use forward slashes instead of backslashes,
+    # hence, the replacement:
+    if os.name == "nt":
+        bottomPaste = bottomPaste.replace("\\", "/")
+        topPaste = topPaste.replace("\\", "/")
+        outline = outline.replace("\\", "/")
+
     topCutout = extractComponentPolygons(cutoutComponents, "F.CrtYd")
     bottomCutout = extractComponentPolygons(cutoutComponents, "B.CrtYd")
     topStencil = printedStencil(outline, topPaste, topCutout, thickness, height,

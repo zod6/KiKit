@@ -180,7 +180,7 @@ def undoTransformation(point, rotation, origin, translation):
     # Abuse PcbNew to do so
     segment = pcbnew.PCB_SHAPE()
     segment.SetShape(STROKE_T.S_SEGMENT)
-    segment.SetStart(wxPoint(point[0], point[1]))
+    segment.SetStart(wxPoint(int(point[0]), int(point[1])))
     segment.SetEnd(wxPoint(0, 0))
     segment.Move(wxPoint(-translation[0], -translation[1]))
     segment.Rotate(origin, -rotation)
@@ -383,7 +383,9 @@ class Panel:
     """
     def __init__(self, panelFilename):
         """
-        Initializes empty panel.
+        Initializes empty panel. Note that due to the restriction of KiCAD 6,
+        when boards are always associated with a project, you have to pass a
+        name of the resulting file.
         """
         self.filename = panelFilename
         self.board = pcbnew.NewBoard(panelFilename)
@@ -497,15 +499,17 @@ class Panel:
             pass
 
 
-    def inheritDesignSettings(self, boardFilename):
+    def inheritDesignSettings(self, board):
         """
-        Inherit design settings from the given board specified by a filename
+        Inherit design settings from the given board specified by a filename or
+        a board
         """
-        b = pcbnew.LoadBoard(boardFilename)
-        self.setDesignSettings(b.GetDesignSettings())
+        if not isinstance(board, pcbnew.BOARD):
+            board = pcbnew.LoadBoard(board)
+        self.setDesignSettings(board.GetDesignSettings())
 
     def setDesignSettings(self, designSettings):
-        """GetDesignSettings
+        """
         Set design settings
         """
         if isV6():
@@ -514,18 +518,33 @@ class Panel:
         else:
             self.board.SetDesignSettings(designSettings)
 
-    def inheritProperties(self, boardFilename):
+    def inheritProperties(self, board):
         """
-        Inherit text properties from a board specified by a properties
+        Inherit text properties from a board specified by a filename or a board
         """
-        b = pcbnew.LoadBoard(boardFilename)
-        self.board.SetProperties(b.GetProperties())
+        if not isinstance(board, pcbnew.BOARD):
+            board = pcbnew.LoadBoard(board)
+        self.board.SetProperties(board.GetProperties())
 
     def setProperties(self, properties):
         """
         Set text properties cached in the board
         """
         self.board.SetProperties(properties)
+
+    def inheritTitleBlock(self, board):
+        """
+        Inherit title block from a board specified by a filename or a board
+        """
+        if not isinstance(board, pcbnew.BOARD):
+            board = pcbnew.LoadBoard(board)
+        self.setTitleBlock(board.GetTitleBlock())
+
+    def setTitleBlock(self, titleBlock):
+        """
+        Set panel title block
+        """
+        self.board.SetTitleBlock(titleBlock)
 
     def appendBoard(self, filename, destination, sourceArea=None,
                     origin=Origin.Center, rotationAngle=0, shrink=False,
@@ -626,8 +645,16 @@ class Panel:
             drawing.Move(translation)
         edges += [edge for edge in drawings if isBoardEdge(edge)]
         otherDrawings = [edge for edge in drawings if not isBoardEdge(edge)]
+
+        def makeRevertTransformation(angle, origin, translation):
+            def f(point):
+                return undoTransformation(point, angle, origin, translation)
+            return f
+
+        revertTransformation = makeRevertTransformation(rotationAngle, originPoint, translation)
         try:
-            o = Substrate(edges, -bufferOutline)
+            o = Substrate(edges, -bufferOutline,
+                revertTransformation=revertTransformation)
             s = Substrate(edges, bufferOutline)
             self.boardSubstrate.union(s)
             self.substrates.append(o)
@@ -1243,13 +1270,19 @@ class Panel:
         """
         Set the auxiliary origin used e.g., for drill files
         """
-        self.board.SetAuxOrigin(point)
+        if isV6():
+            self.board.GetDesignSettings().SetAuxOrigin(point)
+        else:
+            self.board.SetAuxOrigin(point)
 
     def setGridOrigin(self, point):
         """
         Set grid origin
         """
-        self.board.SetGridOrigin(point)
+        if isV6():
+            self.board.GetDesignSettings().SetGridOrigin(point)
+        else:
+            self.board.SetGridOrigin(point)
 
     def _buildPartitionLineFromBB(self, partition):
         for s in self.substrates:
@@ -1291,7 +1324,9 @@ class Panel:
     def buildPartitionLineFromBB(self, boundarySubstrates=[], safeMargin=0):
         """
         Builds partition & backbone line from bounding boxes of the substrates.
-        You can optionally pass extra substrates (e.g., for frame).
+        You can optionally pass extra substrates (e.g., for frame). Without
+        these extra substrates no partition line would be generated on the side
+        where the boundary is, therefore, there won't be any tabs.
         """
         partition = substrate.SubstratePartitionLines(
             self.substrates, boundarySubstrates,
