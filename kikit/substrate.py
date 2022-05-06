@@ -10,6 +10,8 @@ from pcbnewTransition import pcbnew, isV6
 from enum import IntEnum
 from itertools import product
 
+from typing import List, Tuple, Union
+
 from kikit.common import *
 
 from kikit.defs import STROKE_T, Layer
@@ -118,7 +120,11 @@ def extractRings(geometryList):
     for point, items in coincidencePoints.items():
         l = len(items)
         if l == 1:
-            raise PositionError("Discontinuous outline at [{}, {}]", point)
+            raise PositionError("Discontinuous outline at [{}, {}]. This may have several causes:\n" +
+                                "    - The outline in really discontinuous. Check the coordinates in your source board.\n" +
+                                "    - You haven't included all the outlines or in the case of multi-design,\n" +
+                                "      you have included a part of outline from a neighboring board.",
+                                point)
         if l == 2:
             continue
         raise PositionError("Multiple outlines ({}) at [{{}}, {{}}]".format(l), point)
@@ -218,6 +224,30 @@ def createRectangle(rect):
     br = rect.GetEnd()
     return [tl, (br[0], tl[1]), br, (tl[0], br[1]), tl]
 
+def shapeLinechainToList(l: pcbnew.SHAPE_LINE_CHAIN) -> List[Tuple[int, int]]:
+    return [(p.x, p.y) for p in l.CPoints()]
+
+def shapePolyToShapely(p: pcbnew.SHAPE_POLY_SET) \
+        -> Union[shapely.geometry.Polygon, shapely.geometry.MultiPolygon]:
+    """
+    Take SHAPE_POLY_SET and create a shapely polygon out of it.
+    """
+    polygons = []
+    for pIdx in range(p.OutlineCount()):
+        kOutline = p.Outline(pIdx)
+        assert kOutline.IsClosed()
+        outline = shapeLinechainToList(kOutline)
+        holes = []
+        for hIdx in range(p.HoleCount(pIdx)):
+            kHole = p.Hole(hIdx)
+            assert kHole.isClosed()
+            holes.append(shapeLinechainToList(kHole))
+        polygons.append(Polygon(outline, holes=holes))
+    if len(polygons) == 1:
+        return polygons[0]
+    return MultiPolygon(polygons=polygons)
+
+
 def toShapely(ring, geometryList):
     """
     Take a list indices representing a ring from PCB_SHAPE entities and
@@ -229,12 +259,16 @@ def toShapely(ring, geometryList):
         shape = geometryList[idxA].GetShape()
         if shape in [STROKE_T.S_ARC, STROKE_T.S_CIRCLE]:
             outline += approximateArc(geometryList[idxA],
-                commonEndPoint(geometryList[idxA], geometryList[idxB]))[1:]
+                commonEndPoint(geometryList[idxA], geometryList[idxB]))[:-1]
         elif shape in [STROKE_T.S_CURVE]:
             outline += approximateBezier(geometryList[idxA],
-                commonEndPoint(geometryList[idxA], geometryList[idxB]))[1:]
+                commonEndPoint(geometryList[idxA], geometryList[idxB]))[:-1]
         elif shape in [STROKE_T.S_RECT]:
             outline += createRectangle(geometryList[idxA])
+        elif shape in [STROKE_T.S_POLYGON]:
+            # Polygons are always closed, so they should appear as stand-alone
+            assert len(ring) in [1, 2]
+            return shapePolyToShapely(geometryList[idxA].GetPolyShape())
         elif shape in [STROKE_T.S_SEGMENT]:
             outline.append(commonEndPoint(geometryList[idxA], geometryList[idxB]))
         else:
@@ -611,11 +645,11 @@ class Substrate:
         Add fillets to inner conernes which will be produced a by mill with
         given radius.
         """
-        if millRadius < SHP_EPSILON:
+        EPS = fromMm(0.01)
+        RES = 32
+        if millRadius < EPS:
             return
         self.orient()
-        RES = 64
-        EPS = fromMm(0.01)
         self.substrates = self.substrates.buffer(millRadius - EPS, resolution=RES) \
                               .buffer(-millRadius, resolution=RES) \
                               .buffer(EPS, resolution=RES)
@@ -647,6 +681,23 @@ class Substrate:
         Decide whether the substrate consists of a single piece
         """
         return isinstance(self.substrates, Polygon)
+
+    def translate(self, vec):
+        """
+        Translate substrate by vec
+        """
+        self.substrates = shapely.affinity.translate(self.substrates, vec[0], vec[1])
+        self.partitionLine = shapely.affinity.translate(self.partitionLine, vec[0], vec[1])
+        for annotation in self.annotations:
+            o = annotation.origin
+            annotation.origin = (o[0] + vec[0], o[1] + vec[1])
+
+        def newRevertTransformation(point, orig=self.revertTransformation, vec=vec):
+            prevPoint = (point[0] - vec[0], point[1] - vec[1])
+            if orig is not None:
+                return orig(prevPoint)
+            return prevPoint
+        self.revertTransformation = newRevertTransformation
 
 def showPolygon(polygon):
     import matplotlib.pyplot as plt

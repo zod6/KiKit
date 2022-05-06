@@ -8,6 +8,20 @@ from kikit.panelize_ui_sections import *
 
 PKG_BASE = os.path.dirname(__file__)
 PRESETS = os.path.join(PKG_BASE, "resources/panelizePresets")
+IS_CLICK_V8 = click.__version__.startswith("8.")
+
+# We would like to support both, click v7 and v8 in order to maximize
+# compatibility. However, since click v8.1 there is breaking change in the way
+# shell completion works. This functions hides the differences and should allow
+# us to use both. Pass to it as **addCompatibleCompletion(completionFunction)
+def addCompatibleShellCompletion(completionFn):
+    if IS_CLICK_V8:
+        import click.shell_completion
+        def completion(*args, **kwargs):
+            return [click.shell_completion.CompletionItem(x) for x in completionFn(*args, **kwargs)]
+        return {"shell_complete": completionFn}
+    else:
+        return {"autocompletion": completionFn}
 
 def splitStr(delimiter, escapeChar, s):
     """
@@ -107,46 +121,49 @@ def completeSection(section):
 
 @click.command()
 @click.argument("input", type=click.Path(dir_okay=False),
-    autocompletion=pathCompletion(".kicad_pcb"))
+    **addCompatibleShellCompletion(pathCompletion(".kicad_pcb")))
 @click.argument("output", type=click.Path(dir_okay=False),
-    autocompletion=pathCompletion(".kicad_pcb"))
+    **addCompatibleShellCompletion(pathCompletion(".kicad_pcb")))
 @click.option("--preset", "-p", multiple=True,
     help="A panelization preset file; use prefix ':' for built-in styles.",
-    autocompletion=completePreset)
+    **addCompatibleShellCompletion(completePreset))
 @click.option("--layout", "-l", type=Section(),
     help="Override layout settings.",
-    autocompletion=completeSection(LAYOUT_SECTION))
+    **addCompatibleShellCompletion(completeSection(LAYOUT_SECTION)))
 @click.option("--source", "-s", type=Section(),
     help="Override source settings.",
-    autocompletion=completeSection(SOURCE_SECTION))
+    **addCompatibleShellCompletion(completeSection(SOURCE_SECTION)))
 @click.option("--tabs", "-t", type=Section(),
     help="Override tab settings.",
-    autocompletion=completeSection(TABS_SECTION))
+    **addCompatibleShellCompletion(completeSection(TABS_SECTION)))
 @click.option("--cuts", "-c", type=Section(),
     help="Override cut settings.",
-    autocompletion=completeSection(CUTS_SECTION))
+    **addCompatibleShellCompletion(completeSection(CUTS_SECTION)))
 @click.option("--framing", "-r", type=Section(),
     help="Override framing settings.",
-    autocompletion=completeSection(FRAMING_SECTION))
+    **addCompatibleShellCompletion(completeSection(FRAMING_SECTION)))
 @click.option("--tooling", "-o", type=Section(),
     help="Override tooling settings.",
-    autocompletion=completeSection(TOOLING_SECTION))
+    **addCompatibleShellCompletion(completeSection(TOOLING_SECTION)))
 @click.option("--fiducials", "-f", type=Section(),
     help="Override fiducials settings.",
-    autocompletion=completeSection(FIDUCIALS_SECTION))
+    **addCompatibleShellCompletion(completeSection(FIDUCIALS_SECTION)))
 @click.option("--text", "-t", type=Section(),
     help="Override text settings.",
-    autocompletion=completeSection(TEXT_SECTION))
+    **addCompatibleShellCompletion(completeSection(TEXT_SECTION)))
+@click.option("--page", "-P", type=Section(),
+    help="Override page settings.",
+    **addCompatibleShellCompletion(completeSection(POST_SECTION)))
 @click.option("--post", "-z", type=Section(),
-    help="Override post processing settings settings.",
-    autocompletion=completeSection(POST_SECTION))
+    help="Override post processing settings.",
+    **addCompatibleShellCompletion(completeSection(POST_SECTION)))
 @click.option("--debug", type=Section(),
     help="Include debug traces or drawings in the panel.",
-    autocompletion=completeSection(DEBUG_SECTION))
+    **addCompatibleShellCompletion(completeSection(DEBUG_SECTION)))
 @click.option("--dump", "-d", type=click.Path(file_okay=True, dir_okay=False),
     help="Dump constructured preset into a JSON file.")
 def panelize(input, output, preset, layout, source, tabs, cuts, framing,
-                tooling, fiducials, text, post, debug, dump):
+                tooling, fiducials, text, page, post, debug, dump):
     """
     Panelize boards
     """
@@ -154,10 +171,13 @@ def panelize(input, output, preset, layout, source, tabs, cuts, framing,
         # Hide the import in the function to make KiKit start faster
         from kikit import panelize_ui_impl as ki
         import sys
+        from kikit.common import fakeKiCADGui
+        app = fakeKiCADGui()
 
         preset = ki.obtainPreset(preset,
             layout=layout, source=source, tabs=tabs, cuts=cuts, framing=framing,
-            tooling=tooling, fiducials=fiducials, text=text, post=post, debug=debug)
+            tooling=tooling, fiducials=fiducials, text=text, page=page, post=post,
+            debug=debug)
 
         doPanelization(input, output, preset)
 
@@ -189,6 +209,11 @@ def doPanelization(input, output, preset):
     board = LoadBoard(input)
 
     panel = Panel(output)
+
+    # Register extra footprints for annotations
+    for tabFootprint in preset["tabs"]["tabfootprints"]:
+        panel.annotationReader.registerTab(tabFootprint.lib, tabFootprint.footprint)
+
     panel.inheritDesignSettings(board)
     panel.inheritProperties(board)
     panel.inheritTitleBlock(board)
@@ -214,6 +239,8 @@ def doPanelization(input, output, preset):
     ki.makeOtherCuts(preset["cuts"], panel, chain(backboneCuts, frameCuts))
 
     ki.setStackup(preset["source"], panel)
+    ki.positionPanel(preset["page"], panel)
+    ki.setPageSize(preset["page"], panel, board)
 
     ki.runUserScript(preset["post"], panel)
 
@@ -227,11 +254,14 @@ def doPanelization(input, output, preset):
 @click.argument("output", type=click.Path(dir_okay=False))
 @click.option("--source", "-s", type=Section(),
     help="Specify source settings.")
+@click.option("--page", "-P", type=Section(),
+    help="Override page settings.",
+    **addCompatibleShellCompletion(completeSection(POST_SECTION)))
 @click.option("--debug", type=Section(),
     help="Include debug traces or drawings in the panel.")
 @click.option("--keepAnnotations/--stripAnnotations", default=True,
     help="Do not strip annotations" )
-def separate(input, output, source, debug, keepannotations):
+def separate(input, output, source, page, debug, keepannotations):
     """
     Separate a single board out of a multi-board design. The separated board is
     placed in the middle of the sheet.
@@ -244,8 +274,10 @@ def separate(input, output, source, debug, keepannotations):
         from kikit.panelize import Panel
         from pcbnewTransition.transition import isV6, pcbnew
         from pcbnew import LoadBoard, wxPointMM
+        from kikit.common import fakeKiCADGui
+        app = fakeKiCADGui()
 
-        preset = ki.obtainPreset([], validate=False, source=source, debug=debug)
+        preset = ki.obtainPreset([], validate=False, source=source, page=page, debug=debug)
 
         if preset["debug"]["deterministic"] and isV6():
             pcbnew.KIID.SeedGenerator(42)
@@ -262,6 +294,9 @@ def separate(input, output, source, debug, keepannotations):
         panel.appendBoard(input, destination, sourceArea,
             interpretAnnotations=(not keepannotations))
         ki.setStackup(preset["source"], panel)
+        ki.positionPanel(preset["page"], panel)
+        ki.setPageSize(preset["page"], panel, board)
+
         panel.save()
     except Exception as e:
         import sys

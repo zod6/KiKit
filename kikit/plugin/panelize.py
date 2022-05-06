@@ -24,6 +24,9 @@ class ExceptionThread(Thread):
         except Exception as e:
             self.exception = e
 
+def replaceExt(file, ext):
+    return os.path.splitext(file)[0] + ext
+
 def pcbnewPythonPath():
     return os.path.dirname(pcbnew.__file__)
 
@@ -226,6 +229,7 @@ class PanelizeDialog(wx.Dialog):
         self.Bind(wx.EVT_CLOSE, self.OnClose, id=self.GetId())
 
         self.board = board
+        self.dirty = False
 
         topMostBoxSizer = wx.BoxSizer(wx.VERTICAL)
 
@@ -336,14 +340,9 @@ class PanelizeDialog(wx.Dialog):
         self.EndModal(0)
 
     def OnPanelize(self, event):
-        # You might be wondering, why we specify delete=False. The reason is
-        # Windows - the file cannot be opened for the second time. So we use
-        # this only to get a valid temporary name. This is why we close the file
-        # ASAP and only use its name
-        with tempfile.NamedTemporaryFile(suffix=".kicad_pcb", delete=False) as f:
+        with tempfile.TemporaryDirectory(prefix="kikit") as dirname:
             try:
-                fname = f.name
-                f.close()
+                panelFile = os.path.join(dirname, "panel.kicad_pcb")
 
                 progressDlg = wx.ProgressDialog(
                     "Running kikit", "Running kikit, please wait",
@@ -360,9 +359,17 @@ class PanelizeDialog(wx.Dialog):
                     dlg.ShowModal()
                     dlg.Destroy()
                     return
-                output = fname
+                if os.path.realpath(input) == os.path.realpath(pcbnew.GetBoard().GetFileName()):
+                    dlg = wx.MessageDialog(
+                        None,
+                        f"The file {input} is the same as currently opened board. Cannot continue.\n\n" + \
+                         "Please, run the panelization tool when no board is opened in pcbnew.",
+                        "Error", wx.OK)
+                    dlg.ShowModal()
+                    dlg.Destroy()
+                    return
                 thread = ExceptionThread(target=panelize_ui.doPanelization,
-                                         args=(input, output, preset))
+                                         args=(input, panelFile, preset))
                 thread.daemon = True
                 thread.start()
                 while True:
@@ -375,12 +382,17 @@ class PanelizeDialog(wx.Dialog):
                 # KiCAD 6 does something strange here, so we will load
                 # an empty file if we read it directly, but we can always make
                 # a copy and read that:
-                with tempfile.NamedTemporaryFile(suffix=".kicad_pcb", delete=False) as tp:
-                    tpname = tp.name
-                    tp.close()
-                    shutil.copy(f.name, tpname)
-                    panel = pcbnew.LoadBoard(tpname)
+                copyPanelName = os.path.join(dirname, "panel-copy.kicad_pcb")
+                shutil.copy(panelFile, copyPanelName)
+                try:
+                    shutil.copy(replaceExt(panelFile, ".kicad_pro"), replaceExt(copyPanelName, "kicad_pro"))
+                    shutil.copy(replaceExt(panelFile, ".kicad_prl"), replaceExt(copyPanelName, "kicad_prl"))
+                except FileNotFoundError:
+                    # We don't care if we didn't manage to copy the files
+                    pass
+                panel = pcbnew.LoadBoard(copyPanelName)
                 transplateBoard(panel, self.board)
+                self.dirty = True
             except Exception as e:
                 dlg = wx.MessageDialog(
                     None, f"Cannot perform:\n\n{e}", "Error", wx.OK)
@@ -389,11 +401,6 @@ class PanelizeDialog(wx.Dialog):
             finally:
                 progressDlg.Hide()
                 progressDlg.Destroy()
-                try:
-                    os.remove(fname)
-                    os.remove(tpname)
-                except Exception:
-                    pass
         pcbnew.Refresh()
 
     def populateInitialValue(self, initialPreset=None):
@@ -468,6 +475,7 @@ class PanelizePlugin(pcbnew.ActionPlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.preset = {}
+        self.dirty = False
 
     def defaults(self):
         self.name = "KiKit: Panelize PCB"
@@ -478,9 +486,23 @@ class PanelizePlugin(pcbnew.ActionPlugin):
 
     def Run(self):
         try:
+            if not self.dirty and not pcbnew.GetBoard().IsEmpty():
+                dlg = wx.MessageDialog(
+                    None,
+                    "The currently opened board is not empty and it will be " + \
+                    "replaced by the panel. Do you wish to continue?\n\n" + \
+                    "Note that the panelization tool is supposed to be invoked from a stand-alone pcbnew instance.",
+                    "Confirm",
+                    wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION)
+                ret = dlg.ShowModal()
+                dlg.Destroy()
+                if ret == wx.ID_NO:
+                    return
+
             dialog = PanelizeDialog(None, pcbnew.GetBoard(), self.preset)
             dialog.ShowModal()
             self.preset = dialog.collectPreset(includeInput=True)
+            self.dirty = self.dirty or dialog.dirty
         except Exception as e:
             dlg = wx.MessageDialog(
                 None, f"Cannot perform: {e}", "Error", wx.OK)

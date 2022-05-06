@@ -30,7 +30,16 @@ def jlcpcb(**kwargs):
     Prepare fabrication files for JLCPCB including their assembly service
     """
     from kikit.fab import jlcpcb
-    return jlcpcb.exportJlcpcb(**kwargs)
+    from kikit.common import fakeKiCADGui
+    app = fakeKiCADGui()
+
+    try:
+        return jlcpcb.exportJlcpcb(**kwargs)
+    except Exception as e:
+        import sys
+        sys.stderr.write("An error occurred: " + str(e) + "\n")
+        sys.stderr.write("No output files produced\n")
+        sys.exit(1)
 
 
 @click.command()
@@ -62,7 +71,16 @@ def pcbway(**kwargs):
     Prepare fabrication files for PCBWAY including their assembly service
     """
     from kikit.fab import pcbway
-    return pcbway.exportPcbway(**kwargs)
+    from kikit.common import fakeKiCADGui
+    app = fakeKiCADGui()
+
+    try:
+        return pcbway.exportPcbway(**kwargs)
+    except Exception as e:
+        import sys
+        sys.stderr.write("An error occurred: " + str(e) + "\n")
+        sys.stderr.write("No output files produced\n")
+        sys.exit(1)
 
 
 @click.command()
@@ -72,7 +90,16 @@ def oshpark(**kwargs):
     Prepare fabrication files for OSH Park
     """
     from kikit.fab import oshpark
-    return oshpark.exportOSHPark(**kwargs)
+    from kikit.common import fakeKiCADGui
+    app = fakeKiCADGui()
+
+    try:
+        return oshpark.exportOSHPark(**kwargs)
+    except Exception as e:
+        import sys
+        sys.stderr.write("An error occurred: " + str(e) + "\n")
+        sys.stderr.write("No output files produced\n")
+        sys.exit(1)
 
 
 @click.group()

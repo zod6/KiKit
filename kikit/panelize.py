@@ -1,13 +1,17 @@
 from pcbnewTransition import pcbnew, isV6
+from kikit import sexpr
 from kikit.common import normalize
 
+from typing import Tuple, Union
+
 from pcbnew import (GetBoard, LoadBoard,
-    FromMM, ToMM, wxPoint, wxRect, wxRectMM, wxPointMM)
+                    FromMM, ToMM, wxPoint, wxRect, wxRectMM, wxPointMM)
 from enum import Enum
 from shapely.geometry import (Polygon, MultiPolygon, Point, LineString, box,
-    GeometryCollection, MultiLineString)
+                              GeometryCollection, MultiLineString)
 from shapely.prepared import prep
 import shapely
+import shapely.affinity
 from itertools import product, chain
 import numpy as np
 import os
@@ -17,9 +21,10 @@ from collections import OrderedDict
 from kikit import substrate
 from kikit import units
 from kikit.substrate import Substrate, linestringToKicad, extractRings
-from kikit.defs import STROKE_T, Layer, EDA_TEXT_HJUSTIFY_T, EDA_TEXT_VJUSTIFY_T
-
+from kikit.defs import STROKE_T, Layer, EDA_TEXT_HJUSTIFY_T, EDA_TEXT_VJUSTIFY_T, PAPER_SIZES
 from kikit.common import *
+from kikit.sexpr import parseSexprF, SExpr, Atom
+from kikit.annotations import AnnotationReader, TabAnnotation
 
 class PanelError(RuntimeError):
     pass
@@ -67,7 +72,7 @@ class OddEvenRowsColumnsPosition(BasicGridPosition):
     Rotate boards by 180 for every row and column
     """
     def rotation(self, i, j):
-        if (i * j) % 2 == 0:
+        if (i % 2) == (j % 2):
             return 0
         return 1800
 
@@ -275,58 +280,6 @@ def polygonToZone(polygon, board):
         zone.Outline().AddHole(linestringToKicad(boundary))
     return zone
 
-def isAnnotation(footprint):
-    """
-    Given a footprint, decide if it is KiKit annotation
-    """
-    info = footprint.GetFPID()
-    if info.GetLibNickname() != "kikit":
-        return False
-    return info.GetLibItemName() in ["Tab", "Board"]
-
-def readKiKitProps(footprint):
-    """
-    Given a footprint, returns a string containing KiKit annotations.
-    Annotations are in FP_TEXT starting with prefix `KIKIT:`.
-
-    Returns a dictionary of key-value pairs.
-    """
-    for x in footprint.GraphicalItems():
-        if not isinstance(x, pcbnew.FP_TEXT):
-            continue
-        text = x.GetText()
-        if text.startswith("KIKIT:"):
-            return readParameterList(text[len("KIKIT:"):])
-    return {}
-
-class TabAnnotation:
-    def __init__(self, ref, origin, direction, width, maxLength=fromMm(100)):
-        self.ref = ref
-        self.origin = origin
-        self.direction = direction
-        self.width = width
-        self.maxLength = maxLength
-
-    @staticmethod
-    def fromFootprint(footprint):
-        origin = footprint.GetPosition()
-        radOrientaion = footprint.GetOrientationRadians()
-        direction = (np.cos(radOrientaion), -np.sin(radOrientaion))
-        props = readKiKitProps(footprint)
-        width = units.readLength(props["width"])
-        return TabAnnotation(footprint.GetReference(), origin, direction, width)
-
-def convertToAnnotation(footprint):
-    """
-    Given a footprint, convert it into an annotation. One footprint might
-    represent a zero or multiple annotations, so this function returns a list.
-    """
-    name = footprint.GetFPID().GetLibItemName()
-    if name == "Tab":
-        return [TabAnnotation.fromFootprint(footprint)]
-    # We ignore Board annotation
-    return []
-
 def buildTabs(substrate, partitionLines, tabAnnotations):
     """
     Given substrate, partitionLines of the substrate and an iterable of tab
@@ -381,6 +334,7 @@ class Panel:
     we have to specify a filename when creating a panel. Corresponding project
     file will be created.
     """
+
     def __init__(self, panelFilename):
         """
         Initializes empty panel. Note that due to the restriction of KiCAD 6,
@@ -400,6 +354,9 @@ class Panel:
         self.vCutClearance = 0
         self.copperLayerCount = None
         self.zonesToRefill = pcbnew.ZONES()
+        self.pageSize: Union[None, str, Tuple[int, int]] = None
+
+        self.annotationReader = AnnotationReader.getDefault()
 
     def save(self):
         """
@@ -431,6 +388,7 @@ class Panel:
         if isV6():
             self.makeLayersVisible() # as they are not in KiCAD 6
             self.mergeDrcRules()
+        self._adjustPageSize()
 
     def _uniquePrefix(self):
         return "Board_{}-".format(len(self.substrates))
@@ -483,7 +441,7 @@ class Panel:
         try:
             with open(self.getProFilepath(sPath)) as f:
                 sourcePro = json.load(f)
-        except IOError:
+        except (IOError, FileNotFoundError):
             # This means there is no original project file. Probably comes from
             # v5, thus there is nothing to transfer
             return
@@ -493,10 +451,50 @@ class Panel:
             currentPro["board"]["design_settings"] = sourcePro["board"]["design_settings"]
             with open(self.getProFilepath(), "w") as f:
                 json.dump(currentPro, f, indent=2)
-        except KeyError:
+        except (KeyError, FileNotFoundError):
             # This means the source board has no DRC setting. Probably a board
             # without attached project
             pass
+
+    def _adjustPageSize(self) -> None:
+        """
+        Open the just saved panel file and syntactically change the page size.
+        At the moment, there is no API do so, therefore this extra step is
+        required.
+        """
+        if self.pageSize is None:
+            return
+        with open(self.filename, "r") as f:
+            tree = parseSexprF(f)
+        # Find paper property
+        paperExpr = None
+        for subExpr in tree:
+            if not isinstance(subExpr, SExpr):
+                continue
+            if len(subExpr) > 0 and isinstance(subExpr[0], Atom) and subExpr[0].value == "paper":
+                paperExpr = subExpr
+                break
+        assert paperExpr is not None
+
+        if isinstance(self.pageSize, str):
+            paperProps = self.pageSize.split("-")
+            paperExpr.items = [
+                Atom("paper"),
+                Atom(paperProps[0], " ", quoted=True)
+            ]
+            if len(paperProps) > 1:
+                paperExpr.items.append(Atom("portrait", " "))
+        else:
+            pageSize = [float(x) / units.mm for x in self.pageSize]
+            paperExpr.items = [
+                Atom("paper"),
+                Atom("User", " ", quoted=True),
+                Atom(str(pageSize[0]), " "),
+                Atom(str(pageSize[1]), " "),
+            ]
+
+        with open(self.filename, "w") as f:
+            f.write(str(tree))
 
 
     def inheritDesignSettings(self, board):
@@ -525,6 +523,23 @@ class Panel:
         if not isinstance(board, pcbnew.BOARD):
             board = pcbnew.LoadBoard(board)
         self.board.SetProperties(board.GetProperties())
+
+    def inheritPageSize(self, board: Union[pcbnew.BOARD, str]) -> None:
+        """
+        Inherit page size from a board specified by a filename or a board
+        """
+        if not isinstance(board, pcbnew.BOARD):
+            board = pcbnew.LoadBoard(board)
+        self.board.SetPageSettings(board.GetPageSettings())
+
+    def setPageSize(self, size: Union[str, Tuple[int, int]] ) -> None:
+        """
+        Set page size - either a string name (e.g., A4) or size in KiCAD units
+        """
+        if isinstance(size, str):
+            if size not in PAPER_SIZES:
+                raise RuntimeError(f"Unknown paper size: {size}")
+        self.pageSize = size
 
     def setProperties(self, properties):
         """
@@ -562,7 +577,8 @@ class Panel:
         rotation (origin it is placed to destination). It is possible to specify
         coarse source area and automatically shrink it if shrink is True.
         Tolerance enlarges (even shrinked) source area - useful for inclusion of
-        filled zones which can reach out of the board edges.
+        filled zones which can reach out of the board edges or footprints that
+        extend outside the board outline, like connectors.
 
         You can also specify functions which will rename the net and ref names.
         By default, nets are renamed to "Board_{n}-{orig}", refs are unchanged.
@@ -624,8 +640,8 @@ class Panel:
             footprint.Rotate(originPoint, rotationAngle)
             footprint.Move(translation)
             edges += removeCutsFromFootprint(footprint)
-            if interpretAnnotations and isAnnotation(footprint):
-                annotations.extend(convertToAnnotation(footprint))
+            if interpretAnnotations and self.annotationReader.isAnnotation(footprint):
+                annotations.extend(self.annotationReader.convertToAnnotation(footprint))
             else:
                 appendItem(self.board, footprint)
         for track in tracks:
@@ -653,11 +669,10 @@ class Panel:
 
         revertTransformation = makeRevertTransformation(rotationAngle, originPoint, translation)
         try:
-            o = Substrate(edges, -bufferOutline,
+            s = Substrate(edges, 0,
                 revertTransformation=revertTransformation)
-            s = Substrate(edges, bufferOutline)
             self.boardSubstrate.union(s)
-            self.substrates.append(o)
+            self.substrates.append(s)
             self.substrates[-1].annotations = annotations
         except substrate.PositionError as e:
             point = undoTransformation(e.point, rotationAngle, originPoint, translation)
@@ -810,33 +825,83 @@ class Panel:
                     verSpace, horSpace, rotation,
                     placementClass=BasicGridPosition,
                     netRenamePattern="Board_{n}-{orig}",
-                    refRenamePattern="Board_{n}-{orig}"):
+                    refRenamePattern="Board_{n}-{orig}", tolerance=0):
         """
         Place the given board in a regular grid pattern with given spacing
         (verSpace, horSpace). The board position can be fine-tuned via
         placementClass. The nets and references are renamed according to the
         patterns.
 
+        Parameters:
+
+        boardfile - the path to the filename of the board to be added
+
+        sourceArea - the region within the file specified to be selected (see also tolerance, below)
+            set to None to automatically calculate the board area from the board file with the given tolerance
+
+        rows - the number of boards to place in the vertical direction
+
+        cols - the number of boards to place in the horizontal direction
+
+        destination - the center coordinates of the first board in the grid (for example, wxPointMM(100,50))
+
+        verSpace - the vertical spacing (distance, not pitch) between boards
+
+        horSpace - the horizontal spacing (distance, not pitch) between boards
+
+        rotation - the rotation angle to be applied to the source board before placing it
+
+        placementClass - the placement rules for boards. The builtin classes are:
+            BasicGridPosition - places each board in its original orientation
+            OddEvenColumnPosition - every second column has the boards rotated by 180 degrees
+            OddEvenRowPosition - every second row has the boards rotated by 180 degrees
+            OddEvenRowsColumnsPosition - every second row and column has the boards rotated by 180 degrees
+
+        netRenamePattern - the pattern according to which the net names are transformed
+            The default pattern is "Board_{n}-{orig}" which gives each board its own instance of its nets,
+            i.e. GND becomes Board_0-GND for the first board , and Board_1-GND for the second board etc
+
+        refRenamePattern - the pattern according to which the reference designators are transformed
+            The default pattern is "Board_{n}-{orig}" which gives each board its own instance of its reference designators,
+            so R1 becomes Board_0-R1 for the first board, Board_1-R1 for the recond board etc. To keep references the
+            same as in the original, set this to "{orig}"
+
+        tolerance - if no sourceArea is specified, the distance by which the selection
+            area for the board should extend outside the board edge.
+            If you have any objects that are on or outside the board edge, make sure this is big enough to include them.
+            Such objects often include zone outlines and connectors.
+
         Returns a list of the placed substrates. You can use these to generate
         tabs, frames, backbones, etc.
         """
+
         substrateCount = len(self.substrates)
         netRenamer = lambda x, y: netRenamePattern.format(n=x, orig=y)
         refRenamer = lambda x, y: refRenamePattern.format(n=x, orig=y)
         self._placeBoardsInGrid(boardfile, rows, cols, destination,
-                                sourceArea, 0, verSpace, horSpace,
+                                sourceArea, tolerance, verSpace, horSpace,
                                 rotation, netRenamer, refRenamer, placementClass)
         return self.substrates[substrateCount:]
 
     def makeFrame(self, width, hspace, vspace):
         """
-        Build a frame around the board. Specify width and spacing between the
+        Build a frame around the boards. Specify width and spacing between the
         boards substrates and the frame. Return a tuple of vertical and
         horizontal cuts.
+
+        Parameters:
+
+        width - width of substrate around board outlines
+
+        slotwidth - width of milled-out perimeter around board outline
+
+        hspace - horizontal space between board outline and substrate
+
+        vspace - vertical space between board outline and substrate
+
         """
-        frameInnerRect = expandRect(shpBoxToRect(self.boardsBBox()),
-            hspace - SHP_EPSILON, vspace + SHP_EPSILON)
-        frameOuterRect = expandRect(frameInnerRect, width + SHP_EPSILON)
+        frameInnerRect = expandRect(shpBoxToRect(self.boardsBBox()), hspace, vspace)
+        frameOuterRect = expandRect(frameInnerRect, width)
         outerRing = rectToRing(frameOuterRect)
         innerRing = rectToRing(frameInnerRect)
         polygon = Polygon(outerRing, [innerRing])
@@ -852,6 +917,18 @@ class Panel:
     def makeTightFrame(self, width, slotwidth, hspace, vspace):
         """
         Build a full frame with board perimeter milled out.
+        Add your boards to the panel first using appendBoard or makeGrid.
+
+        Parameters:
+
+        width - width of substrate around board outlines
+
+        slotwidth - width of milled-out perimeter around board outline
+
+        hspace - horizontal space between board outline and substrate
+
+        vspace - vertical space between board outline and substrate
+
         """
         self.makeFrame(width, hspace, vspace)
         boardSlot = GeometryCollection()
@@ -866,9 +943,8 @@ class Panel:
         Adds a rail to top and bottom.
         """
         minx, miny, maxx, maxy = self.panelBBox()
-        thickness -= SHP_EPSILON
-        topRail = box(minx, maxy - SHP_EPSILON, maxx, maxy + thickness)
-        bottomRail = box(minx, miny + SHP_EPSILON, maxx, miny - thickness)
+        topRail = box(minx, maxy, maxx, maxy + thickness)
+        bottomRail = box(minx, miny, maxx, miny - thickness)
         self.appendSubstrate(topRail)
         self.appendSubstrate(bottomRail)
 
@@ -877,9 +953,8 @@ class Panel:
         Adds a rail to left and right.
         """
         minx, miny, maxx, maxy = self.panelBBox()
-        thickness -= SHP_EPSILON
-        leftRail = box(minx - thickness + SHP_EPSILON, miny, minx, maxy)
-        rightRail = box(maxx - SHP_EPSILON, miny, maxx + thickness, maxy)
+        leftRail = box(minx - thickness, miny, minx, maxy)
+        rightRail = box(maxx, miny, maxx + thickness, maxy)
         self.appendSubstrate(leftRail)
         self.appendSubstrate(rightRail)
 
@@ -1161,8 +1236,8 @@ class Panel:
         outerBounds = self.substrates[0].partitionLine.bounds
         for s in islice(self.substrates, 1, None):
             outerBounds = shpBBoxMerge(outerBounds, s.partitionLine.bounds)
-        fill = box(*outerBounds).difference(bBoxes.buffer(SHP_EPSILON))
-        self.appendSubstrate(fill.buffer(SHP_EPSILON))
+        fill = box(*outerBounds).difference(bBoxes)
+        self.appendSubstrate(fill)
 
         # Make the cuts from the bounding boxes of the PCB
         substrateBoundaries = [linestringToSegments(rectToShpBox(s.boundingBox()).exterior)
@@ -1196,16 +1271,23 @@ class Panel:
             raise RuntimeError("Attempting to panelize boards together of mixed layer counts")
 
     def setCopperLayers(self, count):
+        """
+        Sets the copper layer count of the panel
+        """
         self.copperLayerCount = count
         self.board.SetCopperLayerCount(self.copperLayerCount)
 
-    def copperFillNonBoardAreas(self):
+    def copperFillNonBoardAreas(self, layers=[Layer.F_Cu,Layer.B_Cu]):
         """
-        Fill top and bottom layers with copper on unused areas of the panel
+        Fill given layers with copper on unused areas of the panel
         (frame, rails and tabs)
+
+        takes a list of layer ids (Default [kikit.defs.Layer.F_Cu, kikit.defs.Layer.B_Cu])
         """
         if not self.boardSubstrate.isSinglePiece():
             raise RuntimeError("The substrate has to be a single piece to fill unused areas")
+        if not len(layers)>0:
+            raise RuntimeError("No layers to add copper to")
         increaseZonePriorities(self.board)
 
         zoneContainer = pcbnew.ZONE(self.board)
@@ -1216,14 +1298,30 @@ class Panel:
             zoneContainer.Outline().AddHole(linestringToKicad(boundary))
         zoneContainer.SetPriority(0)
 
-        zoneContainer.SetLayer(Layer.F_Cu)
+        zoneContainer.SetLayer(layers[0])
         self.board.Add(zoneContainer)
         self.zonesToRefill.append(zoneContainer)
+        for l in layers[1:]:
+            zoneContainer = zoneContainer.Duplicate()
+            zoneContainer.SetLayer(l)
+            self.board.Add(zoneContainer)
+            self.zonesToRefill.append(zoneContainer)
 
-        zoneContainer = zoneContainer.Duplicate()
-        zoneContainer.SetLayer(Layer.B_Cu)
-        self.board.Add(zoneContainer)
-        self.zonesToRefill.append(zoneContainer)
+    def locateBoard(inputFilename, expandDist=None):
+        """
+        Given a board filename, find its source area and optionally expand it by the given distance.
+
+        Parameters:
+
+        inputFilename - the path to the board file
+
+        expandDist - the distance by which to expand the board outline in each direction to ensure elements that are outside the board are included
+        """
+        inputBoard = pcbnew.LoadBoard(inputFilename)
+        boardArea=findBoardBoundingBox(inputBoard)
+        if expandDist is None:
+            return boardArea
+        sourceArea=expandRect(boardArea, expandDist)
 
     def addKeepout(self, area, noTracks=True, noVias=True, noCopper=True):
         """
@@ -1275,6 +1373,12 @@ class Panel:
         else:
             self.board.SetAuxOrigin(point)
 
+    def getAuxiliaryOrigin(self):
+        if isV6():
+            return self.board.GetDesignSettings().GetAuxOrigin()
+        else:
+            return self.board.GetAuxOrigin()
+
     def setGridOrigin(self, point):
         """
         Set grid origin
@@ -1283,6 +1387,12 @@ class Panel:
             self.board.GetDesignSettings().SetGridOrigin(point)
         else:
             self.board.SetGridOrigin(point)
+
+    def getGridOrigin(self):
+        if isV6():
+            return self.board.GetDesignSettings().GetGridOrigin()
+        else:
+            return self.board.GetGridOrigin()
 
     def _buildPartitionLineFromBB(self, partition):
         for s in self.substrates:
@@ -1434,12 +1544,11 @@ class Panel:
                         (x[0] - c * vthickness // 2, x[1]),
                         (x[0] + c * vthickness // 2, x[1])])
                     cuts.append(cut)
-        backbones = list([b.buffer(SHP_EPSILON, join_style=2) for b in pieces])
-        self.appendSubstrate(backbones)
+        self.appendSubstrate(pieces)
         return cuts
 
     def addCornerFillets(self, radius):
-        corners = self.panelCorners(-SHP_EPSILON, -SHP_EPSILON)
+        corners = self.panelCorners()
         filletOrigins = self.panelCorners(radius, radius)
         for corner, opposite in zip(corners, filletOrigins):
             square = shapely.geometry.box(
@@ -1448,18 +1557,46 @@ class Panel:
                 max(corner[0], opposite[0]),
                 max(corner[1], opposite[1])
             )
-            filletCircle = Point(opposite).buffer(radius + SHP_EPSILON, resolution=16)
+            filletCircle = Point(opposite).buffer(radius, resolution=16)
 
             cutShape = square.difference(filletCircle)
             self.boardSubstrate.cut(cutShape)
 
     def addCornerChamfers(self, size):
-        corners = self.panelCorners(-SHP_EPSILON, -SHP_EPSILON)
-        verticalStops = self.panelCorners(-SHP_EPSILON, size)
-        horizontalStops = self.panelCorners(size, -SHP_EPSILON)
+        corners = self.panelCorners()
+        verticalStops = self.panelCorners(0, size)
+        horizontalStops = self.panelCorners(size, 0)
         for t, v, h in zip(corners, verticalStops, horizontalStops):
             cutPoly = Polygon([t, v, h, t])
             self.boardSubstrate.cut(cutPoly)
+
+    def translate(self, vec):
+        """
+        Translates the whole panel by vec. Such a feature can be useful to
+        specify the panel placement in the sheet. When we translate panel as the
+        last operation, none of the operations have to be placement-aware.
+        """
+        vec = wxPoint(vec[0], vec[1])
+        for drawing in self.board.GetDrawings():
+            drawing.Move(vec)
+        for footprint in self.board.GetFootprints():
+            footprint.Move(vec)
+        for track in self.board.GetTracks():
+            track.Move(vec)
+        for zone in self.board.Zones():
+            zone.Move(vec)
+        for substrate in self.substrates:
+            substrate.translate(vec)
+        self.boardSubstrate.translate(vec)
+        self.backboneLines = [shapely.affinity.translate(bline, vec[0], vec[1])
+                              for bline in self.backboneLines]
+        self.hVCuts = [c + vec[1] for c in self.hVCuts]
+        self.vVCuts = [c + vec[0] for c in self.vVCuts]
+        for c in self.vVCuts:
+            c += vec[1]
+        self.setAuxiliaryOrigin(self.getAuxiliaryOrigin() + vec)
+        self.setGridOrigin(self.getGridOrigin() + vec)
+
 
 def getFootprintByReference(board, reference):
     """

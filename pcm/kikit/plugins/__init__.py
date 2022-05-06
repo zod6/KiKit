@@ -44,7 +44,8 @@ try:
     importAllPlugins()
 except ImportError:
     dialog = MissingKiKitDialog()
-    dialog.Show()
+    dialog.ShowModal()
+    dialog.Destroy()
 
 if __name__ == "__main__":
     # Run test dialog
@@ -52,3 +53,4 @@ if __name__ == "__main__":
 
     dialog = MissingKiKitDialog()
     dialog.ShowModal()
+    dialog.Destroy()

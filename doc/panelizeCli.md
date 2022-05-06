@@ -273,8 +273,12 @@ Create tabs in the corners of the PCB.
 
 Add tabs based on PCB annotations. Place a footprint `kikit:Tab` at the edges of
 your PCB. You can edit the text field prefixed with `KIKIT: ` to adjust the tab
-parameters. There are no extra parameters. However, the individual tabs can have
-the following properties specified in the text field of the component:
+parameters. If you want to specify a custom tab symbol (e.g., with predefined)
+width, you can specify `tabfootprints` as a list of footprints separated by
+comma. For example: `myLib:Tab2mm, myLib:Tab3mm`.
+
+The individual tabs can have the following properties specified in the text
+field of the component as `KIKIT:<propertyname>`:
 
 - `width`: width of the tab.
 
@@ -312,7 +316,7 @@ Use mousebites to
 KiKit allows you to frame the panel with a full frame, or bottom/top or
 left/right rails.
 
-**Types**: none, railstb, railsrl, frame, tightframe
+**Types**: none, railstb, railslr, frame, tightframe
 **Common options**:
 
 - `hspace`, `vspace`, `space` - specify the space between PCB and the
@@ -321,7 +325,7 @@ left/right rails.
 - `fillet`, `chamfer` - fillet/chamfer frame corners. Specify radius or chamfer
   size.
 
-#### Railstb/Railsrl
+#### Railstb/Railslr
 
 Add rail (either on top and bottom or on left and right) to the panel.
 
@@ -389,6 +393,31 @@ need more text or more sophisticated placing options, see `script` option from
   Default `center`
 - `thickness` - stroke thickness. Default `0.3mm`.
 - `layer` - specify text layer
+
+## Page
+
+Sets page size on the resulting panel and position the panel in the page. The
+type of style dictates paper size. The default `inherit` option inherits paper
+size from the source board.
+
+**Types**: `inherit`, `custom`, `A0`, `A1`, `A2`, `A3`, `A4`, `A5`, `A`, `B`,
+`C`, `D`, `E`, `USLetter`, `USLegal`, `USLedger`, `A0-portrait`, `A1-portrait`,
+`A2-portrait`, `A3-portrait`, `A4-portrait`, `A5-portrait`, `A-portrait`,
+`B-portrait`, `C-portrait`, `D-portrait`, `E-portrait`, `USLetter-portrait`,
+`USLegal-portrait`, `USLedger-portrait`
+
+**Common options**:
+
+- `anchor` - Point of the panel to be placed at given position. Can be one of
+  `tl`, `tr`, `bl`, `br` (corners), `mt`, `mb`, `ml`, `mr` (middle of sides),
+  `c` (center). The anchors refer to the panel outline. Default `tl`
+- `posx`, `posy` - the position of the panel on the page. Default `15mm`
+
+### Custom
+
+Instead of the pre-defined paper size you can also specify a custom paper size
+via `width` and `height`.
+
 
 ## Post
 
