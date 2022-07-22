@@ -3,6 +3,8 @@ from kikit.panelize_ui import Section, PresetError
 from kikit.panelize import *
 from kikit.defs import Layer
 from shapely.geometry import box
+from kikit.plugin import HookPlugin
+from kikit.text import kikitTextVars
 from kikit.units import BaseValue
 from kikit.panelize_ui_sections import *
 from kikit.substrate import SubstrateNeighbors
@@ -25,6 +27,10 @@ def encodePreset(value):
     """
     Convert a preset into its stringified version.
     """
+    if hasattr(value, "__kikit_preset_repr"):
+        return getattr(value, "__kikit_preset_repr")
+    if value is None:
+        return "none"
     if isinstance(value, BaseValue):
         return str(value)
     if isinstance(value, EDA_TEXT_HJUSTIFY_T) or isinstance(value, EDA_TEXT_VJUSTIFY_T):
@@ -84,6 +90,7 @@ def postProcessPreset(preset):
         "tooling": ppTooling,
         "fiducials": ppFiducials,
         "text": ppText,
+        "copperfill": ppCopper,
         "post": ppPost,
         "page": ppPage,
         "debug": ppDebug
@@ -139,7 +146,7 @@ def validateSections(preset):
     validate all required keys are present. Ignores excessive keys.
     """
     VALID_SECTIONS = ["layout", "source", "tabs", "cuts", "framing", "tooling",
-        "fiducials", "text", "page", "post", "debug"]
+        "fiducials", "text", "page", "copperfill", "post", "debug"]
     extraSections = set(preset.keys()).difference(VALID_SECTIONS)
     if len(extraSections) != 0:
         raise PresetError(f"Extra sections {', '.join(extraSections)} in preset")
@@ -216,31 +223,54 @@ def obtainPreset(presetPaths, validate=True, **kwargs):
     postProcessPreset(preset)
     return preset
 
-def buildLayout(layout, panel, sourceBoard, sourceArea):
+def buildLayout(preset, panel, sourceBoard, sourceArea):
     """
     Build layout for the boards - e.g., make a grid out of them.
 
-    Return the list of created substrates.
+    Return the list of created substrates and framing substrates. Also ensures
+    that the partition line is build properly.
     """
+    layout = preset["layout"]
+    framing = preset["framing"]
     try:
         type = layout["type"]
-        if type in ["grid"]:
+        if type == "grid":
             placementClass = getPlacementClass(layout["alternation"])
-            return panel.makeGrid(
+            placer = placementClass(
+                verSpace=layout["vspace"],
+                horSpace=layout["hspace"],
+                hbonewidth=layout["hbackbone"],
+                vbonewidth=layout["vbackbone"],
+                hboneskip=layout["hboneskip"],
+                vboneskip=layout["vboneskip"])
+            substrates = panel.makeGrid(
                 boardfile=sourceBoard, sourceArea=sourceArea,
-                rows=layout["rows"], cols=layout["cols"], destination=wxPointMM(50, 50),
-                rotation=layout["rotation"],
-                verSpace=layout["vspace"], horSpace=layout["hspace"],
-                placementClass=placementClass,
+                rows=layout["rows"], cols=layout["cols"], destination=wxPointMM(0, 0),
+                rotation=layout["rotation"], placer=placer,
                 netRenamePattern=layout["renamenet"], refRenamePattern=layout["renameref"])
+            framingSubstrates = dummyFramingSubstrate(substrates, preset)
+            panel.buildPartitionLineFromBB(framingSubstrates)
+            backboneCuts = buildBackBone(layout, panel, substrates, framing)
+            return substrates, framingSubstrates, backboneCuts
+        if type == "plugin":
+            lPlugin = layout["code"](preset, layout["arg"], layout["renamenet"],
+                                     layout["renameref"], layout["vspace"],
+                                     layout["hspace"], layout["rotation"])
+            substrates = lPlugin.buildLayout(panel, sourceBoard, sourceArea)
+            framingSubstrates = dummyFramingSubstrate(substrates, preset)
+            lPlugin.buildPartitionLine(panel, framingSubstrates)
+            backboneCuts = lPlugin.buildExtraCuts(panel)
+            return substrates, framingSubstrates, backboneCuts
+
         raise PresetError(f"Unknown type '{type}' of layout specification.")
     except KeyError as e:
         raise PresetError(f"Missing parameter '{e}' in section 'layout'")
 
-def buildTabs(properties, panel, substrates, boundarySubstrates, frameOffsets):
+def buildTabs(preset, panel, substrates, boundarySubstrates, frameOffsets):
     """
     Build tabs for the substrates in between the boards. Return a list of cuts.
     """
+    properties = preset["tabs"]
     try:
         type = properties["type"]
         if type == "none":
@@ -264,6 +294,9 @@ def buildTabs(properties, panel, substrates, boundarySubstrates, frameOffsets):
             return panel.buildFullTabs(frameOffsets)
         if type == "annotation":
             return panel.buildTabsFromAnnotations()
+        if type == "plugin":
+            pluginInst = properties["code"](preset, properties["arg"])
+            return pluginInst.buildTabs(panel)
         raise PresetError(f"Unknown type '{type}' of tabs specification.")
     except KeyError as e:
         raise PresetError(f"Missing parameter '{e}' in section 'tabs'")
@@ -274,7 +307,8 @@ def buildBackBone(layout, panel, substrates, frameSpace):
     """
     try:
         return panel.renderBackbone(layout["vbackbone"], layout["hbackbone"],
-                                    layout["vbonecut"], layout["hbonecut"])
+                                    layout["vbonecut"], layout["hbonecut"],
+                                    layout["vboneskip"], layout["hboneskip"])
     except KeyError as e:
         raise PresetError(f"Missing parameter '{e}' in section 'layout'")
 
@@ -291,16 +325,24 @@ def frameOffset(framing):
     except KeyError as e:
         raise PresetError(f"Missing parameter '{e}' in section 'framing'")
 
-def makeTabCuts(properties, panel, cuts):
+def makeTabCuts(preset, panel, cuts):
     """
     Perform cuts on tab (does not ignore offset)
     """
+    properties = preset["cuts"]
+    if properties["type"] == "plugin":
+        pluginInst = properties["code"](preset, properties["arg"])
+        return pluginInst.renderTabCuts(panel, cuts)
     makeCuts(properties, panel, cuts, False)
 
-def makeOtherCuts(properties, panel, cuts):
+def makeOtherCuts(preset, panel, cuts):
     """
     Perform non-tab cuts (ignore offset)
     """
+    properties = preset["cuts"]
+    if properties["type"] == "plugin":
+        pluginInst = properties["code"](preset, properties["arg"])
+        return pluginInst.renderOtherCuts(panel, cuts)
     makeCuts(properties, panel, cuts, True)
 
 def makeCuts(properties, panel, cuts, ignoreOffset):
@@ -309,16 +351,19 @@ def makeCuts(properties, panel, cuts, ignoreOffset):
     """
     try:
         type = properties["type"]
+        offset = 0 if ignoreOffset else properties["offset"]
         if type == "none":
             return
         if type == "vcuts":
-            panel.makeVCuts(cuts, properties["cutcurves"])
+            panel.makeVCuts(cuts, properties["cutcurves"], offset)
             panel.setVCutLayer(properties["layer"])
             panel.setVCutClearance(properties["clearance"])
         elif type == "mousebites":
-            offset = 0 if ignoreOffset else properties["offset"]
             panel.makeMouseBites(cuts, properties["drill"],
                 properties["spacing"], offset, properties["prolong"])
+        elif type == "layer":
+            panel.makeCutsToLayer(cuts,
+                layer=properties["layer"], prolongation=properties["prolong"])
         else:
             raise PresetError(f"Unknown type '{type}' of cuts specification.")
     except KeyError as e:
@@ -330,11 +375,15 @@ def polygonToSubstrate(polygon):
     s.union(polygon)
     return s
 
-def dummyFramingSubstrate(substrates, frameOffset):
+def dummyFramingSubstrate(substrates, preset):
     """
     Generate dummy substrates that pretend to be the frame (to appear)
     """
-    vSpace, hSpace = frameOffset
+    framingPreset = preset["framing"]
+    if framingPreset["type"] == "plugin":
+        pluginInst = framingPreset["code"](preset, framingPreset["arg"])
+        return pluginInst.buildDummyFramingSubstrates(substrates)
+    vSpace, hSpace = frameOffset(framingPreset)
     dummy = []
     minx, miny, maxx, maxy = substrates[0].bounds()
     for s in substrates:
@@ -343,7 +392,10 @@ def dummyFramingSubstrate(substrates, frameOffset):
         miny = min(miny, miny2)
         maxx = max(maxx, maxx2)
         maxy = max(maxy, maxy2)
-    width = fromMm(0)
+    # Note that the constructed substrates has to have a non-zero width/height.
+    # If the width is zero, we break the input condition of the neighbor finding
+    # algorithm (as there is no distinguishion between left and right side)
+    width = fromMm(1)
     if vSpace is not None:
         top = box(minx, miny - 2 * vSpace - width, maxx, miny - 2 * vSpace)
         bottom = box(minx, maxy + 2 * vSpace, maxx, maxy + 2 * vSpace + width)
@@ -380,34 +432,41 @@ def buildFraming(preset, panel):
     """
     Build frame according to the preset and return cuts
     """
+    framingPreset = preset["framing"]
     try:
-        type = preset["type"]
+        type = framingPreset["type"]
         if type == "none":
             return []
         if type == "railstb":
-            panel.makeRailsTb(preset["width"])
-            addFilletAndChamfer(preset, panel)
+            panel.makeRailsTb(framingPreset["width"], framingPreset["mintotalheight"])
+            addFilletAndChamfer(framingPreset, panel)
             return []
         if type == "railslr":
-            panel.makeRailsLr(preset["width"])
-            addFilletAndChamfer(preset, panel)
+            panel.makeRailsLr(framingPreset["width"], framingPreset["mintotalwidth"])
+            addFilletAndChamfer(framingPreset, panel)
             return []
         if type == "frame":
-            cuts = panel.makeFrame(preset["width"], preset["hspace"], preset["vspace"])
-            addFilletAndChamfer(preset, panel)
-            if preset["cuts"] == "both":
+            cuts = panel.makeFrame(framingPreset["width"],
+                framingPreset["hspace"], framingPreset["vspace"],
+                framingPreset["mintotalwidth"], framingPreset["mintotalheight"])
+            addFilletAndChamfer(framingPreset, panel)
+            if framingPreset["cuts"] == "both":
                 return chain(*cuts)
-            if preset["cuts"] == "v":
+            if framingPreset["cuts"] == "v":
                 return cuts[0]
-            if preset["cuts"] == "h":
+            if framingPreset["cuts"] == "h":
                 return cuts[1]
             return []
         if type == "tightframe":
-            panel.makeTightFrame(preset["width"], preset["slotwidth"],
-                preset["hspace"], preset["vspace"])
+            panel.makeTightFrame(framingPreset["width"], framingPreset["slotwidth"],
+                framingPreset["hspace"], framingPreset["vspace"],
+                framingPreset["mintotalwidth"], framingPreset["mintotalheight"])
             panel.boardSubstrate.removeIslands()
-            addFilletAndChamfer(preset, panel)
+            addFilletAndChamfer(framingPreset, panel)
             return []
+        if type == "plugin":
+            framePlugin = framingPreset["code"](preset, framingPreset["arg"])
+            return framePlugin.buildFraming(panel)
         raise PresetError(f"Unknown type '{type}' of frame specification.")
     except KeyError as e:
         raise PresetError(f"Missing parameter '{e}' in section 'framing'")
@@ -416,13 +475,17 @@ def buildTooling(preset, panel):
     """
     Build tooling holes according to the preset
     """
+    toolingPreset = preset["tooling"]
     try:
-        type = preset["type"]
+        type = toolingPreset["type"]
         if type == "none":
             return
-        hoffset, voffset = preset["hoffset"], preset["voffset"]
-        diameter = preset["size"]
-        paste = preset["paste"]
+        if type == "plugin":
+            pluginInst = toolingPreset["code"](preset, toolingPreset["arg"])
+            return pluginInst.buildTooling(panel)
+        hoffset, voffset = toolingPreset["hoffset"], toolingPreset["voffset"]
+        diameter = toolingPreset["size"]
+        paste = toolingPreset["paste"]
         if type == "3hole":
             panel.addCornerTooling(3, hoffset, voffset, diameter, paste)
             return
@@ -437,12 +500,16 @@ def buildFiducials(preset, panel):
     """
     Build tooling holes according to the preset
     """
+    fidPreset = preset["fiducials"]
     try:
-        type = preset["type"]
+        type = fidPreset["type"]
         if type == "none":
             return
-        hoffset, voffset = preset["hoffset"], preset["voffset"]
-        coppersize, opening = preset["coppersize"], preset["opening"]
+        if type == "plugin":
+            pluginInst = fidPreset["code"](preset, fidPreset["arg"])
+            return pluginInst.buildFiducials(panel)
+        hoffset, voffset = fidPreset["hoffset"], fidPreset["voffset"]
+        coppersize, opening = fidPreset["coppersize"], fidPreset["opening"]
         if type == "3fid":
             panel.addCornerFiducials(3, hoffset, voffset, coppersize, opening)
             return
@@ -461,12 +528,19 @@ def buildText(preset, panel):
         type = preset["type"]
         if type == "none":
             return
+        variables = kikitTextVars(panel.board)
+        if preset["plugin"] is not None:
+            variables.update(preset["plugin"](panel.board).variables())
+        try:
+            text = preset["text"].format(**variables)
+        except KeyError as e:
+            raise RuntimeError(f"Unknown variable {e} in text:\n{preset['text']}") from None
         if type == "simple":
             origin = resolveAnchor(preset["anchor"])(panel.boardSubstrate.boundingBox())
             origin += wxPoint(preset["hoffset"], preset["voffset"])
 
             panel.addText(
-                text=preset["text"],
+                text=text,
                 position=origin,
                 orientation=preset["orientation"],
                 width=preset["width"],
@@ -479,6 +553,32 @@ def buildText(preset, panel):
         raise PresetError(f"Unknown type '{type}' of text specification.")
     except KeyError as e:
         raise PresetError(f"Missing parameter '{e}' in section 'text'")
+
+def buildCopperfill(preset, panel):
+    """
+    Perform copperfill operation
+    """
+    try:
+        type = preset["type"]
+        if type == "none":
+            return
+        if type == "solid":
+            panel.copperFillNonBoardAreas(
+                clearance=preset["clearance"],
+                layers=preset["layers"],
+                hatched=False
+            )
+        if type == "hatched":
+            panel.copperFillNonBoardAreas(
+                    clearance=preset["clearance"],
+                    layers=preset["layers"],
+                    hatched=True,
+                    strokeWidth=preset["width"],
+                    strokeSpacing=preset["spacing"],
+                    orientation=preset["orientation"]
+            )
+    except KeyError as e:
+        raise PresetError(f"Missing parameter '{e}' in section 'postprocessing'")
 
 def buildPostprocessing(preset, panel):
     """
@@ -555,3 +655,58 @@ def setPageSize(preset, panel, sourceBoard):
         panel.setPageSize(pageSize)
     except KeyError as e:
         raise PresetError(f"Missing parameter '{e}' in section 'page'")
+
+HookPluginInvoker = Callable[[HookPlugin], None]
+
+def loadHookPlugins(pluginSpec: List[Tuple[str, str, str]], board: pcbnew.BOARD,
+                   preset: Dict[str, Dict[str, Any]]) -> Callable[[HookPluginInvoker], None]:
+    """
+    Loads hook plugins based on the specification and returns a function that
+    will invoke given callable on each of the loaded plugins.
+
+    This function assumes it is called only once during the whole execution of
+    the process.
+    """
+    plugins: List[HookPlugin] = []
+    for moduleName, pluginName, arg in pluginSpec:
+        try:
+            if moduleName.endswith(".py"):
+                plugin = loadHookPluginFromFile(moduleName, pluginName, arg, board, preset, len(plugins))
+                plugins.append(plugin)
+            else:
+                plugin = loadHookPluginFromModule(moduleName, pluginName, arg, board, preset)
+                plugins.append(plugin)
+        except Exception as e:
+            raise RuntimeError(f"Cannot instantiate '{moduleName}:{pluginName}': {e}") from None
+
+    def usePlugins(invoker: HookPluginInvoker) -> None:
+        nonlocal plugins
+        for p in plugins:
+            invoker(p)
+    return usePlugins
+
+def loadHookPluginFromFile(moduleName: str, pluginName: str, arg: str,
+                           board: pcbnew.BOARD, preset: Dict[str, Dict[str, Any]],
+                           seq: int) -> HookPlugin:
+    import importlib.util
+
+    if not os.path.exists(moduleName):
+        raise RuntimeError(f"File doesn't exist")
+
+    spec = importlib.util.spec_from_file_location(
+                f"kikit.user.hook_plugin{seq}",
+                moduleName)
+    if spec is None:
+        raise RuntimeError(f"Plugin module '{moduleName}' doesn't exist")
+    pluginModule = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pluginModule)
+    pluginType = getattr(pluginModule, pluginName)
+    return pluginType(arg, board, preset)
+
+def loadHookPluginFromModule(moduleName: str, pluginName: str, arg: str,
+                           board: pcbnew.BOARD, preset: Dict[str, Dict[str, Any]]) \
+                                -> HookPlugin:
+    import importlib
+    pluginModule = importlib.import_module(moduleName)
+    pluginType = getattr(pluginModule, pluginName)
+    return pluginType(arg, board, preset)

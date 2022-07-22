@@ -22,10 +22,18 @@ PcbDraw:
 Let's start with our first panel.
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2;' \
     --tabs full \
     --cuts vcuts \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2;" ^
+    --tabs full ^
+    --cuts vcuts ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -75,11 +83,20 @@ I told you that the panel above is not suitable for manufacturing. Let's see
 why:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2;' \
     --tabs full \
     --cuts vcuts \
     --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2;" ^
+    --tabs full ^
+    --cuts vcuts ^
+    --post "millradius: 1mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -95,11 +112,20 @@ have rounded corners, you will use short tabs instead and add some space between
 the boards. So let's fix it:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; hwidth: 10mm; vwidth: 15mm' \
     --cuts vcuts \
     --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; hwidth: 10mm; vwidth: 15mm" ^
+    --cuts vcuts ^
+    --post "millradius: 1mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -109,10 +135,18 @@ In that way, the rounded corners can be machined. Lets' see the same example
 with mousebites instead:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 5mm' \
     --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 5mm" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -129,11 +163,20 @@ break away the tabs, all burs will be inside the intended board outline.
 What happens, when we simulate the milling operation?
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 5mm' \
     --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm' \
     --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 5mm" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm" ^
+    --post "millradius: 1mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -144,11 +187,20 @@ cannot be milled. KiKit can fix that for you – just specify you want to prolon
 your cuts tangentially by a small amount:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 3mm' \
     --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
     --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --post "millradius: 1mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -158,11 +210,20 @@ If you want, you can also specify a number of tabs to generate. KiKit will place
 them evenly:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 3mm; vcount: 2' \
     --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
     --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --post "millradius: 1mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -180,12 +241,22 @@ the following situations:
 Let's start with rails:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 3mm; vcount: 2' \
     --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
     --framing 'railstb; width: 5mm; space: 3mm;' \
     --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm;" ^
+    --post "millradius: 1mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -197,12 +268,22 @@ sense to include cuts in the corner of the frame, so you can break it apart
 easily. Let's see an example:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 3mm; vcount: 2' \
     --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
     --framing 'frame; width: 5mm; space: 3mm; cuts: both' \
     --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "frame; width: 5mm; space: 3mm; cuts: both" ^
+    --post "millradius: 1mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -211,12 +292,22 @@ kikit panelize \
 Note that you can also use just only a vertical or horizontal frame cuts:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 3mm; vcount: 2' \
     --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
     --framing 'frame; width: 5mm; space: 3mm; cuts: h' \
     --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "frame; width: 5mm; space: 3mm; cuts: h" ^
+    --post "millradius: 1mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -229,12 +320,22 @@ via framing type `tightframe`. Note that it does not make much sense with
 mousebites.
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 6mm' \
     --tabs 'fixed; width: 3mm; vcount: 2' \
     --cuts vcuts \
     --framing 'tightframe; width: 5mm; space: 3mm; ' \
     --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 6mm" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts vcuts ^
+    --framing "tightframe; width: 5mm; space: 3mm; " ^
+    --post "millradius: 1mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -244,6 +345,7 @@ Once we have a frame, we can append a tooling holes, fiducials and some text to
 it:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 3mm; vcount: 2' \
@@ -253,6 +355,18 @@ kikit panelize \
     --fiducials '3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;' \
     --text 'simple; text: yaqwsx's panel; anchor: mt; voffset: 2.5mm; hjustify: center; vjustify: center;' \
     --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm;" ^
+    --tooling "3hole; hoffset: 2.5mm; voffset: 2.5mm; size: 1.5mm" ^
+    --fiducials "3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;" ^
+    --text "simple; text: yaqwsx's panel; anchor: mt; voffset: 2.5mm; hjustify: center; vjustify: center;" ^
+    --post "millradius: 1mm" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
@@ -265,6 +379,7 @@ If you have an automatic feeder in your PNP machine or you just dislike
 sharp corners, you can add a chamfer or a fillet to the panel frame/rails:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 3mm; vcount: 2' \
@@ -274,10 +389,22 @@ kikit panelize \
     --fiducials '3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;' \
     --post 'millradius: 1mm' \
     doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm; fillet: 1mm" ^
+    --tooling "3hole; hoffset: 2.5mm; voffset: 2.5mm; size: 1.5mm" ^
+    --fiducials "3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;" ^
+    --post "millradius: 1mm" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
 ![examplePanel13](resources/examplePanel13.png)
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 3mm; vcount: 2' \
@@ -287,9 +414,52 @@ kikit panelize \
     --fiducials '3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;' \
     --post 'millradius: 1mm' \
     doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm; chamfer: 1mm" ^
+    --tooling "3hole; hoffset: 2.5mm; voffset: 2.5mm; size: 1.5mm" ^
+    --fiducials "3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;" ^
+    --post "millradius: 1mm" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
 ![examplePanel14](resources/examplePanel14.png)
+
+Some services, e.g., JLC PCB require a minimal panel size. If you want to ensure
+that your panel meets the criteria, you can specify minimal total width/height
+of the panel. Let's see an example:
+
+```
+# Linux
+kikit panelize \
+    --layout 'grid; rows: 2; cols: 2; space: 2mm' \
+    --tabs 'fixed; width: 3mm; vcount: 2' \
+    --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
+    --framing 'frame; width: 5mm; space: 3mm; mintotalheight: 100mm; mintotalwidth: 100mm' \
+    --tooling '3hole; hoffset: 2.5mm; voffset: 2.5mm; size: 1.5mm' \
+    --fiducials '3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;' \
+    --text 'simple; text: yaqwsx's panel with minimal dimensions; anchor: mt; voffset: 2.5mm; hjustify: center; vjustify: center;' \
+    --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "frame; width: 5mm; space: 3mm; mintotalheight: 100mm; mintotalwidth: 100mm" ^
+    --tooling "3hole; hoffset: 2.5mm; voffset: 2.5mm; size: 1.5mm" ^
+    --fiducials "3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;" ^
+    --text "simple; text: yaqwsx's panel with minimal dimensions; anchor: mt; voffset: 2.5mm; hjustify: center; vjustify: center;" ^
+    --post "millradius: 1mm" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+```
+
+![examplePanel15](resources/examplePanel15.png)
 
 # Advanced features & layouts
 
@@ -302,6 +472,7 @@ shaped boards:
 
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 0mm; rotation: 45deg;' \
     --tabs 'fixed; width: 3mm;' \
@@ -309,9 +480,18 @@ kikit panelize \
     --framing 'frame; width: 5mm; space: 3mm; cuts: both' \
     --post 'millradius: 1mm' \
     doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 0mm; rotation: 45deg;" ^
+    --tabs "fixed; width: 3mm;" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.75mm" ^
+    --framing "frame; width: 5mm; space: 3mm; cuts: both" ^
+    --post "millradius: 1mm" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
-![examplePanel15](resources/examplePanel15.png)
+![examplePanel16](resources/examplePanel16.png)
 
 When your board has a connector sticking one one side of the board, it makes
 sense to rotate the boards every other column, row or combination of both. KiKit
@@ -321,6 +501,7 @@ component references when rotating boards – KiCAD's references have a property
 be sure to turn it off before panelizing. Here's an example:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 3mm; alternation: cols;' \
     --tabs 'fixed; width: 3mm; vcount: 2' \
@@ -328,29 +509,73 @@ kikit panelize \
     --framing 'frame; width: 5mm; space: 3mm; cuts: both' \
     --post 'millradius: 1mm' \
     doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 3mm; alternation: cols;" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "frame; width: 5mm; space: 3mm; cuts: both" ^
+    --post "millradius: 1mm" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
-![examplePanel16](resources/examplePanel16.png)
+![examplePanel17](resources/examplePanel17.png)
 
 Another solution might be to not put tabs on, e.g., vertical edges of the PCB.
 However, in that case your panel might be weak for further assembly. You can
 make it more stiff by including backbones – a full piece of substrate between
-the panels. Note that adding a backbone does not extend space between boards -
-that's up to you. You can add either vertical, horizontal or both backbones.
+the panels. You can add either vertical, horizontal or both backbones.
 Also, similarly with frames, you can put cuts on your backbone to make
 depanelization of your boards easier. Enough theory, let's see an example
 
 ```
+# Linux
 kikit panelize \
-    --layout 'grid; rows: 2; cols: 2; hspace: 2mm; vspace: 9mm; hbackbone: 5mm; hbonecut: true' \
+    --layout 'grid; rows: 2; cols: 2; space: 2mm; hbackbone: 5mm; hbonecut: true' \
     --tabs 'fixed; width: 3mm; vcount: 2; hcount: 0' \
     --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
     --framing 'railstb; width: 5mm; space: 3mm;' \
     --post 'millradius: 1mm' \
     doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm; hbackbone: 5mm; hbonecut: true" ^
+    --tabs "fixed; width: 3mm; vcount: 2; hcount: 0" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm;" ^
+    --post "millradius: 1mm" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
-![examplePanel17](resources/examplePanel17.png)
+![examplePanel18](resources/examplePanel18.png)
+
+Often, not all backbones are needed. Especially for larger panels. Therefore, if
+you want, you can skip some of them. Consider the following 4×4 panel with only
+ever other backbone:
+
+```
+# Linux
+kikit panelize \
+    --layout 'grid; rows: 4; cols: 4; space: 2mm; hbackbone: 5mm; vbackbone: 5mm; hboneskip: 1; vboneskip: 1' \
+    --tabs 'fixed; width: 3mm; vcount: 2; hcount: 0' \
+    --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
+    --framing 'railstb; width: 5mm; space: 3mm;' \
+    --post 'millradius: 1mm' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 4; cols: 4; space: 2mm; hbackbone: 5mm; vbackbone: 5mm; hboneskip: 1; vboneskip: 1" ^
+    --tabs "fixed; width: 3mm; vcount: 2; hcount: 0" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm;" ^
+    --post "millradius: 1mm" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+```
+
+![examplePanel19](resources/examplePanel19.png)
 
 The most powerful feature of KiKit regarding tab placement are tabs via
 annotation. Remember our test board? When you open it in Pcbnew, you can see
@@ -364,6 +589,7 @@ text property of the symbol. How to use it? Just specify tab type to
 capture the annotations.
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 5mm;' \
     --tabs annotation \
@@ -372,9 +598,19 @@ kikit panelize \
     --framing 'railstb; width: 5mm; space: 3mm;' \
     --post 'millradius: 1mm' \
     doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 5mm;" ^
+    --tabs annotation ^
+    --source "tolerance: 15mm" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm;" ^
+    --post "millradius: 1mm" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
-![examplePanel18](resources/examplePanel18.png)
+![examplePanel20](resources/examplePanel20.png)
 
 Well, the panel looks strange – right? That's because KiKit always constructs a
 half-bridges. When you specify the tabs location, you have to either ensure they
@@ -383,17 +619,28 @@ tightframe. If you are interested in the details, read more about tabs in
 section [Understanding tabs](understandingTabs.md). Let's fix it:
 
 ```
+# Linux
 kikit panelize \
-    --layout 'grid; rows: 2; cols: 2; space: 8mm; hbackbone: 3mm; vbackbone: 3mm' \
+    --layout 'grid; rows: 2; cols: 2; space: 2mm; hbackbone: 3mm; vbackbone: 3mm' \
     --tabs annotation \
     --source 'tolerance: 15mm' \
     --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
     --framing 'railstb; width: 5mm; space: 3mm;' \
     --post 'millradius: 1mm' \
     doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm; hbackbone: 3mm; vbackbone: 3mm" ^
+    --tabs annotation ^
+    --source "tolerance: 15mm" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm;" ^
+    --post "millradius: 1mm" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
-![examplePanel19](resources/examplePanel19.png)
+![examplePanel21](resources/examplePanel21.png)
 
 Note that the annotation can have an arbitrary orientation. The arrow just must
 be outside board edge and points towards it. KiKit will also place only those
@@ -402,34 +649,86 @@ tabs, that have a neighboring substrate. For precise algorithm, see section
 
 When you make flex PCBs or you want to save etchant, it make sense to pour
 copper on all non-functional parts of the panel. It will make the PCB rigid. You
-can do so via `copperfill` post-processing operation:
+can do so via `copperfill` section:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 3mm;' \
     --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
     --framing 'railstb; width: 5mm; space: 3mm;' \
-    --post 'millradius: 1mm; copperfill: true' \
+    --copperfill solid \
+    --post 'millradius: 1mm;' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm;" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm;" ^
+    --copperfill solid ^
+    --post "millradius: 1mm;" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
-![examplePanel20](resources/examplePanel20.png)
+![examplePanel22](resources/examplePanel22.png)
 
 When you use V-cuts with `copperfill` you (or your fab house) might want to
 include a clearance around the V-cuts:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; hwidth: 10mm; vwidth: 15mm' \
     --cuts 'vcuts; clearance: 1.5mm' \
     --framing 'railstb; width: 5mm; space: 3mm;' \
-    --post 'millradius: 1mm; copperfill: true' \
+    --copperfill solid \
+    --post 'millradius: 1mm;' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; hwidth: 10mm; vwidth: 15mm" ^
+    --cuts "vcuts; clearance: 1.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm;" ^
+    --copperfill solid ^
+    --post "millradius: 1mm;" ^
     doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
-![examplePanel21](resources/examplePanel21.png)
+![examplePanel23](resources/examplePanel23.png)
+
+If you, for example do not wish to cover the tabs with copper, you can also
+specify clearance. Also, some manufacturers don't like when you have large solid
+copper areas. In that case, you can use a hatch pattern to fill the area:
+
+```
+# Linux
+kikit panelize \
+    --layout 'grid; rows: 2; cols: 2; space: 2mm' \
+    --tabs 'fixed; width: 3mm;' \
+    --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
+    --framing 'railstb; width: 5mm; space: 3mm;' \
+    --copperfill 'hatched; clearance: 2mm; spacing: 0.5mm; width: 0.5mm' \
+    --post 'millradius: 1mm;' \
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm;" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm;" ^
+    --copperfill "hatched; clearance: 2mm; spacing: 0.5mm; width: 0.5mm" ^
+    --post "millradius: 1mm;" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
+```
+
+![examplePanel24](resources/examplePanel24.png)
 
 Note one last facts about V-cuts. V-cuts can only be straight and
 horizontal/vertical. But you can use them with circular boards if you want by
@@ -459,6 +758,7 @@ def kikitPostprocess(panel, arg):
 Then run KiKit:
 
 ```
+# Linux
 kikit panelize \
     --layout 'grid; rows: 2; cols: 2; space: 2mm' \
     --tabs 'fixed; width: 3mm; vcount: 2' \
@@ -466,9 +766,18 @@ kikit panelize \
     --framing 'railstb; width: 5mm; space: 3mm;' \
     --post 'millradius: 1mm; script: doc/resources/examplePost.py' \
     doc/resources/conn.kicad_pcb panel.kicad_pcb
+
+# Windows
+kikit panelize ^
+    --layout "grid; rows: 2; cols: 2; space: 2mm" ^
+    --tabs "fixed; width: 3mm; vcount: 2" ^
+    --cuts "mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm" ^
+    --framing "railstb; width: 5mm; space: 3mm;" ^
+    --post "millradius: 1mm; script: doc/resources/examplePost.py" ^
+    doc/resources/conn.kicad_pcb panel.kicad_pcb
 ```
 
-![examplePanel22](resources/examplePanel22.png)
+![examplePanel25](resources/examplePanel25.png)
 
 You can learn more about available functions from the comment in the source code
 or in [documentation](panelization.md).

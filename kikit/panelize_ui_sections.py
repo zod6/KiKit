@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+import os
 from typing import Any, List
+from kikit import plugin
 from kikit.units import readLength, readAngle
 from kikit.defs import Layer, EDA_TEXT_HJUSTIFY_T, EDA_TEXT_VJUSTIFY_T, PAPER_SIZES
 
@@ -49,6 +51,48 @@ class SStr(SectionBase):
 
     def validate(self, x):
         return str(x)
+
+class SPlugin(SectionBase):
+    seq: int = 0
+
+    def __init__(self, pluginType, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pluginType = pluginType
+
+    def validate(self, x):
+        if x == "none":
+            return None
+        self.seq += 1
+
+        pieces = str(x).rsplit(".", maxsplit=1)
+        if len(pieces) != 2:
+            raise RuntimeError(f"Invalid plugin specification '{x}'")
+        moduleName, pluginName = pieces[0], pieces[1]
+        plugin = self.loadFromFile(moduleName, pluginName) if moduleName.endswith(".py") \
+                 else self.loadFromModule(moduleName, pluginName)
+        if not issubclass(plugin, self.pluginType):
+            raise RuntimeError(f"Invalid plugin type specified, {self.pluginType.__name__} expected")
+        setattr(plugin, "__kikit_preset_repr", x)
+        return plugin
+
+    def loadFromFile(self, file, name):
+        import importlib.util
+
+        if not os.path.exists(file):
+            raise RuntimeError(f"File {file} doesn't exist")
+        spec = importlib.util.spec_from_file_location(
+                f"kikit.user.SPlugin_{self.seq}",
+                file)
+        if spec is None:
+            raise RuntimeError(f"Plugin module '{file}' doesn't exist")
+        pluginModule = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pluginModule)
+        return getattr(pluginModule, name)
+
+    def loadFromModule(self, module, name):
+        import importlib
+        pluginModule = importlib.import_module(module)
+        return getattr(pluginModule, name)
 
 class SChoiceBase(SectionBase):
     def __init__(self, vals, *args, **kwargs):
@@ -128,6 +172,19 @@ class SList(SectionBase):
     def validate(self, x: str) -> Any:
         return [v.strip() for v in x.split(",")]
 
+class SLayerList(SList):
+    def validate(self, x: str) -> Any:
+        return [self.readLayer(x) for x in super().validate(x)]
+
+    def readLayer(self, s: str) -> Layer:
+        if isinstance(s, int):
+            if s in tuple(item.value for item in Layer):
+                return Layer(s)
+            raise PresetError(f"{s} is not a valid layer number")
+        if isinstance(s, str):
+            return Layer[s.replace(".", "_")]
+        raise PresetError(f"Got {s}, expected layer name or number")
+
 class SFootprintList(SList):
     def validate(self, x: str) -> Any:
         result: List[FootprintId] = []
@@ -160,7 +217,7 @@ def never():
 
 LAYOUT_SECTION = {
     "type": SChoice(
-        ["grid"],
+        ["grid", "plugin"],
         always(),
         "Layout type"),
     "alternation": SChoice(
@@ -177,34 +234,45 @@ LAYOUT_SECTION = {
         never(),
         "Specify the gap between the boards in both direction"),
     "hbackbone": SLength(
-        always(),
-        "The width of vertical and horizontal backbone (0 means no backbone)"),
+        typeIn(["grid"]),
+        "The width of horizontal backbone (0 means no backbone)"),
     "vbackbone": SLength(
-        always(),
-        "The width of vertical and horizontal backbone (0 means no backbone)"),
+        typeIn(["grid"]),
+        "The width of vertical backbone (0 means no backbone)"),
+    "hboneskip": SNum(
+        typeIn(["grid"]),
+        "Skip every given number of horizontal backbones"),
+    "vboneskip": SNum(
+        typeIn(["grid"]),
+        "Skip every given number of vertical backbones"),
     "rotation": SAngle(
         always(),
         "Rotate the boards before placing them in the panel"),
     "rows": SNum(
-        always(),
+        typeIn(["grid"]),
         "Specify the number of boards in the grid pattern"),
     "cols": SNum(
-        always(),
+        typeIn(["grid"]),
         "Specify the number of boards in the grid pattern"),
     "vbonecut": SBool(
-        always(),
+        typeIn(["grid"]),
         "Cut backone in vertical direction"),
     "hbonecut": SBool(
-        always(),
+        typeIn(["grid"]),
         "Cut backone in horizontal direction"),
     "renamenet": SStr(
         always(),
-        "Net renaming pattern"
-    ),
+        "Net renaming pattern"),
     "renameref": SStr(
         always(),
-        "Reference renaming pattern"
-    )
+        "Reference renaming pattern"),
+    "code": SPlugin(
+        plugin.LayoutPlugin,
+        typeIn(["plugin"]),
+        "Plugin specification as moduleName.pluginName"),
+    "arg": SStr(
+        typeIn(["plugin"]),
+        "String argument for the layout plugin")
 }
 
 def ppLayout(section):
@@ -247,7 +315,7 @@ def ppSource(section):
 
 TABS_SECTION = {
     "type": SChoice(
-        ["none", "fixed", "spacing", "full", "corner", "annotation"],
+        ["none", "fixed", "spacing", "full", "corner", "annotation", "plugin"],
         always(),
         "Tab type"),
     "vwidth": SLength(
@@ -273,7 +341,14 @@ TABS_SECTION = {
         "Number of tabs in a given direction."),
     "tabfootprints": SFootprintList(
         typeIn(["annotation"]),
-        "Specify custom footprints that will be used for tab annotations.")
+        "Specify custom footprints that will be used for tab annotations."),
+    "code": SPlugin(
+        plugin.TabsPlugin,
+        typeIn(["plugin"]),
+        "Plugin specification as moduleName.pluginName"),
+    "arg": SStr(
+        typeIn(["plugin"]),
+        "String argument for the layout plugin")
 }
 
 def ppTabs(section):
@@ -283,7 +358,7 @@ def ppTabs(section):
 
 CUTS_SECTION = {
     "type": SChoice(
-        ["none", "mousebites", "vcuts"],
+        ["none", "mousebites", "vcuts", "layer", "plugin"],
         always(),
         "Cut type"),
     "drill": SLength(
@@ -296,7 +371,7 @@ CUTS_SECTION = {
         typeIn(["mousebites", "vcuts"]),
         "Offset cuts into the board"),
     "prolong": SLength(
-        typeIn(["mousebites"]),
+        typeIn(["mousebites", "layer"]),
         "Tangentiall prolong cuts (to cut mill fillets)"),
     "clearance": SLength(
         typeIn(["vcuts"]),
@@ -305,8 +380,15 @@ CUTS_SECTION = {
         typeIn(["vcuts"]),
         "Approximate curves with straight cut"),
     "layer": SLayer(
-        typeIn(["vcuts"]),
-        "Draw V-cuts into a specified layer")
+        typeIn(["vcuts", "layer"]),
+        "Specify layer for the drawings"),
+    "code": SPlugin(
+        plugin.CutsPlugin,
+        typeIn(["plugin"]),
+        "Plugin specification as moduleName.pluginName"),
+    "arg": SStr(
+        typeIn(["plugin"]),
+        "String argument for the layout plugin")
 }
 
 def ppCuts(section):
@@ -314,14 +396,14 @@ def ppCuts(section):
 
 FRAMING_SECTION = {
     "type": SChoice(
-        ["none", "railstb", "railslr", "frame", "tightframe"],
+        ["none", "railstb", "railslr", "frame", "tightframe", "plugin"],
         always(),
         "Framing type"),
     "hspace": SLength(
-        typeIn(["frame", "railslr"]),
+        typeIn(["frame", "railslr", "tightframe"]),
         "Horizontal space between PCBs and the frame"),
     "vspace": SLength(
-        typeIn(["frame", "railstb"]),
+        typeIn(["frame", "railstb", "tightframe"]),
         "Vertical space between PCBs and the frame"),
     "space": SLength(
         never(),
@@ -329,6 +411,14 @@ FRAMING_SECTION = {
     "width": SLength(
         typeIn(["frame", "railstb", "railslr", "tightframe"]),
         "Width of the framing"),
+    "mintotalheight": SLength(
+        typeIn(["frame", "railstb", "tightframe"]),
+        "Minimal height of the panel"
+    ),
+    "mintotalwidth": SLength(
+        typeIn(["frame", "raillr", "tightframe"]),
+        "Minimal width of the panel"
+    ),
     "slotwidth": SLength(
         typeIn(["tightframe"]),
         "Width of the milled slot"),
@@ -342,6 +432,13 @@ FRAMING_SECTION = {
     "fillet": SLength(
         typeIn(["tightframe", "frame", "railslr", "railstb"]),
         "Add fillet to the 4 corners of the panel. Specify fillet radius."),
+    "code": SPlugin(
+        plugin.FramingPlugin,
+        typeIn(["plugin"]),
+        "Plugin specification as moduleName.pluginName"),
+    "arg": SStr(
+        typeIn(["plugin"]),
+        "String argument for the layout plugin")
 }
 
 def ppFraming(section):
@@ -352,7 +449,7 @@ def ppFraming(section):
 
 TOOLING_SECTION = {
     "type": SChoice(
-        ["none", "3hole", "4hole"],
+        ["none", "3hole", "4hole", "plugin"],
         always(),
         "Tooling type"),
     "hoffset": SLength(
@@ -366,7 +463,14 @@ TOOLING_SECTION = {
         "Hole diameter"),
     "paste": SBool(
         typeIn(["3hole", "4hole"]),
-        "Include holes on the paste layer")
+        "Include holes on the paste layer"),
+    "code": SPlugin(
+        plugin.ToolingPlugin,
+        typeIn(["plugin"]),
+        "Plugin specification as moduleName.pluginName"),
+    "arg": SStr(
+        typeIn(["plugin"]),
+        "String argument for the layout plugin")
 }
 
 def ppTooling(section):
@@ -374,7 +478,7 @@ def ppTooling(section):
 
 FIDUCIALS_SECTION = {
     "type": SChoice(
-        ["none", "3fid", "4fid"],
+        ["none", "3fid", "4fid", "plugin"],
         always(),
         "Fiducial type"),
     "hoffset": SLength(
@@ -388,7 +492,14 @@ FIDUCIALS_SECTION = {
         "Diameter of the copper part"),
     "opening": SLength(
         typeIn(["3fid", "4fid"]),
-        "Diameter of the opening")
+        "Diameter of the opening"),
+    "code": SPlugin(
+        plugin.FiducialsPlugin,
+        typeIn(["plugin"]),
+        "Plugin specification as moduleName.pluginName"),
+    "arg": SStr(
+        typeIn(["plugin"]),
+        "String argument for the layout plugin")
 }
 
 def ppFiducials(section):
@@ -432,11 +543,41 @@ TEXT_SECTION = {
     "anchor": SChoice(
         ANCHORS,
         typeIn(["simple"]),
-        "Anchor for positioning the text")
+        "Anchor for positioning the text"),
+    "plugin": SPlugin(
+        plugin.TextVariablePlugin,
+        typeIn(["simple"]),
+        "Plugin for extra text variables")
 }
 
 def ppText(section):
     section = validateSection("text", TEXT_SECTION, section)
+
+COPPERFILL_SECTION = {
+    "type": SChoice(
+        ["none", "solid", "hatched"],
+        always(),
+        "Fill non board areas with copper"),
+    "clearance": SLength(
+        typeIn(["solid", "hatched"]),
+        "Clearance between the fill and boards"),
+    "layers": SLayerList(
+        typeIn(["solid", "hatched"]),
+        "Specify which layer to fill with copper"),
+    "width": SLength(
+        typeIn(["hatched"]),
+        "Width of hatch strokes"),
+    "spacing": SLength(
+        typeIn(["hatched"]),
+        "Spacing of hatch strokes"),
+    "orientation": SAngle(
+        typeIn(["hatched"]),
+        "Orientation of the strokes"
+    )
+}
+
+def ppCopper(section):
+    section = validateSection("copperfill", COPPERFILL_SECTION, section)
 
 POST_SECTION = {
     "type": SChoice(
@@ -445,10 +586,16 @@ POST_SECTION = {
         "Postprocessing type"),
     "copperfill": SBool(
         always(),
-        "Fill unused areas of the panel with copper"),
+        "DEPRECATED, use section copperfill instead. Fill unused areas of the panel with copper"),
     "millradius": SLength(
         always(),
         "Simulate milling operation"),
+    "reconstructarcs": SBool(
+        always(),
+        "Try to reconstruct arcs"),
+    "refillzones": SBool(
+        always(),
+        "Refill all zones in the panel"),
     "script": SStr(
         always(),
         "Specify path to a custom postprocessing script"),
@@ -507,6 +654,10 @@ DEBUG_SECTION = {
     "trace": SBool(
         always(),
         "Print stacktrace"),
+    "drawtabfail": SBool(
+        always(),
+        "Visualize tab building failures"
+    ),
     "deterministic": SBool(
         always(),
         "Make KiCAD IDs deterministic")
@@ -524,6 +675,7 @@ availableSections = {
     "Tooling": TOOLING_SECTION,
     "Fiducials": FIDUCIALS_SECTION,
     "Text": TEXT_SECTION,
+    "Copperfill": COPPERFILL_SECTION,
     "Page": PAGE_SECTION,
     "Post": POST_SECTION,
     "Debug": DEBUG_SECTION,

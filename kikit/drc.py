@@ -15,7 +15,9 @@ from kikit.drc_ui import ReportLevel
 ItemFingerprint = Tuple[int, int, str]
 
 def roundCoord(x: int) -> int:
-    return round(x, -3)
+    # KiCAD doesn't round the values, it just cuts the decimal places. So let's
+    # emulate that
+    return round(x - 50, -4)
 
 def getItemFingerprint(item: pcbnew.BOARD_ITEM):
     return (roundCoord(item.GetPosition()[0]), # Round down, since the output does the same
@@ -38,6 +40,7 @@ def collectFingerprints(board: pcbnew.BOARD) -> Dict[ItemFingerprint, pcbnew.BOA
         collect(f.Pads())
         collect(f.GraphicalItems())
         collect(f.Zones())
+        collect([f.Reference(), f.Value()])
     collect(board.GetTracks())
     collect(board.Zones())
 
@@ -116,7 +119,7 @@ def readBoardItem(text: str,
     """
     Given DRC report object description, try to find it in the board
     """
-    itemMatch = re.match(r'\s*@\((\d*(.\d*)?) mm, (\d*(.\d*)?) mm\): (.*)$', text)
+    itemMatch = re.match(r'\s*@\((-?\d*(\.\d*)?) mm, (-?\d*(\.\d*)?) mm\): (.*)$', text)
     if itemMatch is None:
         raise RuntimeError(f"Cannot parse board item from '{text}'")
     posX = float(itemMatch.group(1))
@@ -126,8 +129,7 @@ def readBoardItem(text: str,
     try:
         return fingerprints[fPrint]
     except KeyError:
-        x = '\n'.join([f"{x}: {y}" for x, y in fingerprints.items()])
-        raise RuntimeError(f"Cannot find board item from '{text}', fingerprint: '{fPrint}'\n\n{x}") from None
+        raise RuntimeError(f"Cannot find board item from '{text}', fingerprint: '{fPrint}'") # from None
 
 def readViolations(reportFile: TextIO,
                    fingerprints: Dict[ItemFingerprint, pcbnew.BOARD_ITEM]) \
@@ -190,26 +192,36 @@ def runBoardDrc(board: pcbnew.BOARD, strict: bool) -> DrcReport:
             os.unlink(tmpFile.name)
     return report
 
+def deserializeExclusion(exclusionText: str, board: pcbnew.BOARD) -> DrcExclusion:
+    items = exclusionText.split("|")
+    objects = [board.GetItem(pcbnew.KIID(x)) for x in items[3:]]
+    objects = [x for x in objects if x is not None]
+    return DrcExclusion(items[0],
+                        pcbnew.wxPoint(int(items[1]), int(items[2])),
+                        objects)
+
+def serializeExclusion(exclusion: DrcExclusion) -> str:
+    objIds = [x.m_Uuid.AsString() for x in exclusion.objects]
+    while len(objIds) < 2:
+        objIds.append("00000000-0000-0000-0000-000000000000")
+    return "|".join([
+        str(exclusion.type),
+        str(exclusion.position[0]),
+        str(exclusion.position[1])] + objIds
+    )
+
 def readBoardDrcExclusions(board: pcbnew.BOARD) -> List[DrcExclusion]:
     projectFilename = os.path.splitext(board.GetFileName())[0]+'.kicad_pro'
     try:
         with open(projectFilename) as f:
             project = json.load(f)
     except FileNotFoundError:
-        raise RuntimeError(f"Board '{board.GetFileName()}' has no project, cannot read DRC exclusions")
+        raise FileNotFoundError(f"Board '{board.GetFileName()}' has no project, cannot read DRC exclusions")
     try:
         exclusions = project["board"]["design_settings"]["drc_exclusions"]
     except KeyError:
         return [] # There are no exclusions
-    res = []
-    for exlusionText in exclusions:
-        items = exlusionText.split("|")
-        objects = [board.GetItem(pcbnew.KIID(x)) for x in items[3:]]
-        objects = [x for x in objects if x is not None]
-        res.append(DrcExclusion(items[0],
-                                pcbnew.wxPoint(int(items[1]), int(items[2])),
-                                objects))
-    return res
+    return [deserializeExclusion(e, board) for e in exclusions]
 
 def runImpl(board, useMm, ignoreExcluded, strict, level, yieldViolation):
     units = pcbnew.EDA_UNITS_MILLIMETRES if useMm else EDA_UNITS_INCHES

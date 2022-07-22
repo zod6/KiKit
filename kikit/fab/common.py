@@ -153,6 +153,51 @@ def excludeFromPos(footprint):
     else:
         return footprint.GetAttributes() & MODULE_ATTR_T.MOD_VIRTUAL
 
+def readCorrectionPatterns(filename):
+    """
+    Read footprint correction pattern file.
+
+    The file should be a CSV file with the following fields:
+    - Regexp to match to the footprint
+    - Regexp to match to the part id (ignored at the moment)
+    - X correction
+    - Y correction
+    - Rotation
+    """
+    corrections = OrderedDict()
+    correctionPatterns = []
+    with open(filename) as csvfile:
+        sample = csvfile.read(1024)
+        dialect = csv.Sniffer().sniff(sample)
+        has_header = csv.Sniffer().has_header(sample)
+        csvfile.seek(0)
+        reader = csv.reader(csvfile, dialect)
+        first = True
+        for row in reader:
+            if has_header and first:
+                first = False
+                continue
+            correctionPatterns.append(
+                CorrectionPattern(
+                    re.compile(row[0]),
+                    re.compile(row[1]),
+                    float(row[2]),
+                    float(row[3]),
+                    float(row[4]),
+                )
+            )
+    return correctionPatterns
+
+def applyCorrectionPattern(correctionPatterns, footprint):
+    # FIXME: part ID is currently ignored
+    # GetUniStringLibId returns the full footprint name including the 
+    # library in the form of "Resistor_SMD:R_0402_1005Metric"
+    footprintName = str(footprint.GetFPID().GetUniStringLibId())
+    for corpat in correctionPatterns:
+        if corpat.footprint.match(footprintName):
+            return (corpat.x_correction, corpat.y_correction, corpat.rotation)
+    return (0, 0, 0)
+
 def collectPosData(board, correctionFields, posFilter=lambda x : True,
                    footprintX=defaultFootprintX, footprintY=defaultFootprintY, bom=None,
                    correctionFile=None):
@@ -193,7 +238,7 @@ def collectPosData(board, correctionFields, posFilter=lambda x : True,
                 break
         if field is None or field == "":
             return applyCorrectionPattern(
-                correctionPatterns, 
+                correctionPatterns,
                 footprint)
         try:
             return parseCompensation(field)

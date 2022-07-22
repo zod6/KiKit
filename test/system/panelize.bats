@@ -148,6 +148,21 @@ load common
         $RES/conn.kicad_pcb panel.kicad_pcb
 }
 
+@test "Simple grid, framing features with variable" {
+    kikit panelize \
+        --layout 'grid; rows: 2; cols: 2; space: 2mm' \
+        --tabs 'fixed; width: 3mm; vcount: 2' \
+        --cuts 'mousebites; drill: 0.5mm; spacing: 1mm; offset: 0.2mm; prolong: 0.5mm' \
+        --framing 'railstb; width: 5mm; space: 3mm;' \
+        --tooling '3hole; hoffset: 2.5mm; voffset: 2.5mm; size: 1.5mm' \
+        --fiducials '3fid; hoffset: 5mm; voffset: 2.5mm; coppersize: 2mm; opening: 1mm;' \
+        --text 'simple; text: yaqwsx panel {date}; anchor: mt; voffset: 2.5mm; hjustify: center; vjustify: center;' \
+        --post 'millradius: 1mm' \
+        --debug 'trace: true; deterministic: true' \
+        $RES/conn.kicad_pcb panel.kicad_pcb
+}
+
+
 @test "Grid with alternation" {
     kikit panelize \
         --layout 'grid; rows: 2; cols: 2; space: 3mm; alternation: cols;' \
@@ -200,9 +215,82 @@ load common
         $RES/conn.kicad_pcb panel.kicad_pcb
 }
 
+@test "Set page" {
+    if [ $(kikit-info drcapi) -lt 1 ]; then
+        skip "KiCAD $(kikit-info kicadversion) doesn't support page size."
+    fi
+
+    kikit panelize \
+        --page 'A3;' \
+        --debug 'trace: true; deterministic: true' \
+        $RES/conn.kicad_pcb panel.kicad_pcb
+}
+
+
+@test "Use layout plugin" {
+    kikit panelize --dump preset.json \
+        --layout "plugin; code: $RES/testplugin.py.MyLayout" \
+        --tabs 'fixed; hwidth: 10mm; vwidth: 15mm' \
+        --cuts 'vcuts; clearance: 1.5mm' \
+        --debug 'trace: true; deterministic: true' \
+        $RES/conn.kicad_pcb panel-original.kicad_pcb
+}
+
+@test "Use framing plugin" {
+    kikit panelize --dump preset.json \
+        --layout "grid" \
+        --tabs 'fixed; hwidth: 10mm; vwidth: 15mm' \
+        --framing "plugin; code: $RES/testplugin.py.MyFraming" \
+        --cuts 'vcuts; clearance: 1.5mm' \
+        --debug 'trace: true; deterministic: true' \
+        $RES/conn.kicad_pcb panel-original.kicad_pcb
+}
+
+@test "Use tabs plugin" {
+    kikit panelize --dump preset.json \
+        --layout "grid" \
+        --tabs "plugin; code: $RES/testplugin.py.MyTabs" \
+        --cuts 'vcuts; clearance: 1.5mm' \
+        --debug 'trace: true; deterministic: true' \
+        $RES/conn.kicad_pcb panel-original.kicad_pcb
+}
+
+@test "Use cuts plugin" {
+    kikit panelize --dump preset.json \
+        --layout "grid" \
+        --cuts "plugin; code: $RES/testplugin.py.MyCuts" \
+        --debug 'trace: true; deterministic: true' \
+        $RES/conn.kicad_pcb panel-original.kicad_pcb
+}
+
+@test "Use fiducials and tooling plugin" {
+    kikit panelize --dump preset.json \
+        --layout "grid" \
+        --fiducials "plugin; code: $RES/testplugin.py.MyFiducials" \
+        --tooling "plugin; code: $RES/testplugin.py.MyTooling" \
+        --debug 'trace: true; deterministic: true' \
+        $RES/conn.kicad_pcb panel-original.kicad_pcb
+}
+
 @test "Dumping preset" {
     kikit panelize --dump preset.json \
         --layout 'grid; rows: 2; cols: 2; space: 2mm' \
+        --tabs 'fixed; hwidth: 10mm; vwidth: 15mm' \
+        --cuts 'vcuts; clearance: 1.5mm' \
+        --debug 'trace: true; deterministic: true' \
+        $RES/conn.kicad_pcb panel-original.kicad_pcb
+    kikit panelize -p preset.json $RES/conn.kicad_pcb panel-copy.kicad_pcb
+
+    # Remove timestamps
+    perl -pi -e 's/\((tedit|tstamp).*\)//g' panel-original.kicad_pcb
+    perl -pi -e 's/\((tedit|tstamp).*\)//g' panel-copy.kicad_pcb
+
+    cmp -s panel-original.kicad_pcb panel-copy.kicad_pcb
+}
+
+@test "Dumping preset with plugin" {
+    kikit panelize --dump preset.json \
+        --layout "plugin; code: $RES/testplugin.py.MyLayout" \
         --tabs 'fixed; hwidth: 10mm; vwidth: 15mm' \
         --cuts 'vcuts; clearance: 1.5mm' \
         --debug 'trace: true; deterministic: true' \

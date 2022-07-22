@@ -11,8 +11,12 @@
         "renameref": "{orig}",
         "hbackbone": "0mm",
         "vbackbone": "0mm",
+        "hboneskip": 0,
+        "vboneskip": 0,
         "vbonecut": true,
-        "hbonecut": true
+        "hbonecut": true,
+        "code": "none",
+        "arg": ""
     },
     "source": {
         "type": "auto",
@@ -32,7 +36,9 @@
         "vwidth": "3mm",
         "mindistance": "0mm",
         "spacing": "10mm",
-        "tabfootprints": "kikit:Tab"
+        "tabfootprints": "kikit:Tab",
+        "code": "none",
+        "arg": ""
     },
     "cuts": {
         "type": "none",
@@ -42,7 +48,9 @@
         "offset": "0mm",
         "prolong": "0mm",
         "drill": "0.5mm",
-        "spacing": "0.8mm"
+        "spacing": "0.8mm",
+        "code": "none",
+        "arg": ""
     },
     "framing": {
         "type": "none",
@@ -50,25 +58,34 @@
         "millRadius": "0mm",
         "cuts": "both",
         "copperFill": false,
+        "width": "5mm",
         "slotwidth": "2mm",
         "hspace": "2mm",
         "vspace": "2mm",
+        "mintotalheight": "0mm",
+        "mintotalwidth": "0mm",
         "chamfer": "0mm",
-        "fillet": "0mm"
+        "fillet": "0mm",
+        "code": "none",
+        "arg": ""
     },
     "tooling": {
         "type": "none",
         "layout": "3hole",
         "hoffset": "0mm",
         "voffset": "0mm",
-        "paste": false
+        "paste": false,
+        "code": "none",
+        "arg": ""
     },
     "fiducials": {
         "type": "none",
         "hoffset": "0mm",
         "voffset": "0mm",
         "coppersize": "1mm",
-        "opening": "1mm"
+        "opening": "1mm",
+        "code": "none",
+        "arg": ""
     },
     "text": {
         "type": "none",
@@ -82,15 +99,26 @@
         "hjustify": "center",
         "vjustify": "center",
         "thickness": "0.3mm",
-        "layer": "F.SilkS"
+        "layer": "F.SilkS",
+        "plugin": "none"
+    },
+    "copperfill": {
+        "type": "none",
+        "clearance": "0.5mm",
+        "layers": "F.Cu,B.Cu",
+        "width": "1mm",
+        "spacing": "1mm",
+        "orientation": "45deg"
     },
     "post": {
         "type": "auto",
         "copperfill": false,
+        "reconstructarcs": false,
         "millradius": "0mm",
         "script": "",
         "scriptarg": "",
-        "origin": "tl"
+        "origin": "tl",
+        "refillzones": false
     },
     "page": {
         "type": "inherit",
@@ -106,6 +134,7 @@
         "drawBackboneLines": false,
         "drawboxes": false,
         "trace": false,
-        "deterministic": false
+        "deterministic": false,
+        "drawtabfail": false
     }
 }

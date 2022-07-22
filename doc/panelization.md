@@ -296,12 +296,16 @@ Remove all existing tab annotations from the panel.
 
 #### `copperFillNonBoardAreas`
 ```
-copperFillNonBoardAreas(self, layers=[<Layer.F_Cu: 0>, <Layer.B_Cu: 31>])
+copperFillNonBoardAreas(self, clearance=1000000, 
+                        layers=[<Layer.F_Cu: 0>, <Layer.B_Cu: 31>], 
+                        hatched=False, strokeWidth=1000000, 
+                        strokeSpacing=1000000, orientation=450)
 ```
 Fill given layers with copper on unused areas of the panel
-(frame, rails and tabs)
+(frame, rails and tabs). You can specify the clearance, if it should be
+hatched (default is solid) or shape the strokes of hatched pattern.
 
-takes a list of layer ids (Default [kikit.defs.Layer.F_Cu, kikit.defs.Layer.B_Cu])
+By default, fills top and bottom layer.
 
 #### `debugRenderBackboneLines`
 ```
@@ -392,9 +396,20 @@ inputFilename - the path to the board file
 
 expandDist - the distance by which to expand the board outline in each direction to ensure elements that are outside the board are included
 
+#### `makeCutsToLayer`
+```
+makeCutsToLayer(self, cuts, layer=Layer.Cmts_User, prolongation=0)
+```
+Take a list of cuts and render them as lines on given layer. The cuts
+can be prolonged just like with mousebites.
+
+The purpose of this is to aid debugging when KiKit refuses to perform
+cuts. Rendering them into lines can give the user better understanding
+of where is the problem.
+
 #### `makeFrame`
 ```
-makeFrame(self, width, hspace, vspace)
+makeFrame(self, width, hspace, vspace, minWidth=0, minHeight=0)
 ```
 Build a frame around the boards. Specify width and spacing between the
 boards substrates and the frame. Return a tuple of vertical and
@@ -410,6 +425,10 @@ hspace - horizontal space between board outline and substrate
 
 vspace - vertical space between board outline and substrate
 
+minWidth - if the panel doesn't meet this width, it is extended
+
+minHeight - if the panel doesn't meet this height, it is extended
+
 #### `makeFrameCutsH`
 ```
 makeFrameCutsH(self, innerArea, frameInnerArea, outerArea)
@@ -424,56 +443,60 @@ Generate vertical cuts for the frame corners and return them
 
 #### `makeGrid`
 ```
-makeGrid(self, boardfile, sourceArea, rows, cols, destination, verSpace, 
-         horSpace, rotation, 
-         placementClass=<class 'kikit.panelize.BasicGridPosition'>, 
-         netRenamePattern=Board_{n}-{orig}, refRenamePattern=Board_{n}-{orig}, 
-         tolerance=0)
+makeGrid(self, boardfile, sourceArea, rows, cols, destination, placer, 
+         rotation=0, netRenamePattern=Board_{n}-{orig}, 
+         refRenamePattern=Board_{n}-{orig}, tolerance=0)
 ```
-Place the given board in a regular grid pattern with given spacing
-(verSpace, horSpace). The board position can be fine-tuned via
-placementClass. The nets and references are renamed according to the
-patterns.
+Place the given board in a grid pattern with given spacing. The board
+position of the gride is guided via placer. The nets and references are
+renamed according to the patterns.
 
 Parameters:
 
 boardfile - the path to the filename of the board to be added
 
-sourceArea - the region within the file specified to be selected (see also tolerance, below)
-    set to None to automatically calculate the board area from the board file with the given tolerance
+sourceArea - the region within the file specified to be selected (see
+also tolerance, below)
+    set to None to automatically calculate the board area from the board
+    file with the given tolerance
 
 rows - the number of boards to place in the vertical direction
 
 cols - the number of boards to place in the horizontal direction
 
-destination - the center coordinates of the first board in the grid (for example, wxPointMM(100,50))
+destination - the center coordinates of the first board in the grid (for
+example, wxPointMM(100,50))
 
-verSpace - the vertical spacing (distance, not pitch) between boards
+rotation - the rotation angle to be applied to the source board before
+placing it
 
-horSpace - the horizontal spacing (distance, not pitch) between boards
-
-rotation - the rotation angle to be applied to the source board before placing it
-
-placementClass - the placement rules for boards. The builtin classes are:
+placer - the placement rules for boards. The builtin classes are:
     BasicGridPosition - places each board in its original orientation
-    OddEvenColumnPosition - every second column has the boards rotated by 180 degrees
-    OddEvenRowPosition - every second row has the boards rotated by 180 degrees
-    OddEvenRowsColumnsPosition - every second row and column has the boards rotated by 180 degrees
+    OddEvenColumnPosition - every second column has the boards rotated
+    by 180 degrees OddEvenRowPosition - every second row has the boards
+    rotated by 180 degrees OddEvenRowsColumnsPosition - every second row
+    and column has the boards rotated by 180 degrees
 
-netRenamePattern - the pattern according to which the net names are transformed
-    The default pattern is "Board_{n}-{orig}" which gives each board its own instance of its nets, 
-    i.e. GND becomes Board_0-GND for the first board , and Board_1-GND for the second board etc
+netRenamePattern - the pattern according to which the net names are
+transformed
+    The default pattern is "Board_{n}-{orig}" which gives each board its
+    own instance of its nets, i.e. GND becomes Board_0-GND for the first
+    board , and Board_1-GND for the second board etc
 
-refRenamePattern - the pattern according to which the reference designators are transformed
-    The default pattern is "Board_{n}-{orig}" which gives each board its own instance of its reference designators,
-    so R1 becomes Board_0-R1 for the first board, Board_1-R1 for the recond board etc. To keep references the
-    same as in the original, set this to "{orig}"
+refRenamePattern - the pattern according to which the reference
+designators are transformed
+    The default pattern is "Board_{n}-{orig}" which gives each board its
+    own instance of its reference designators, so R1 becomes Board_0-R1
+    for the first board, Board_1-R1 for the second board etc. To keep
+    references the same as in the original, set this to "{orig}"
 
-tolerance - if no sourceArea is specified, the distance by which the selection 
-    area for the board should extend outside the board edge.
-    If you have any objects that are on or outside the board edge, make sure this is big enough to include them.
-    Such objects often include zone outlines and connectors.
-    
+tolerance - if no sourceArea is specified, the distance by which the
+selection
+    area for the board should extend outside the board edge. If you have
+    any objects that are on or outside the board edge, make sure this is
+    big enough to include them. Such objects often include zone outlines
+    and connectors.
+
 Returns a list of the placed substrates. You can use these to generate
 tabs, frames, backbones, etc.
 
@@ -493,19 +516,21 @@ to
 
 #### `makeRailsLr`
 ```
-makeRailsLr(self, thickness)
+makeRailsLr(self, thickness, minWidth=0)
 ```
-Adds a rail to left and right.
+Adds a rail to left and right. You can specify minimal width the panel
+has to feature.
 
 #### `makeRailsTb`
 ```
-makeRailsTb(self, thickness)
+makeRailsTb(self, thickness, minHeight=0)
 ```
-Adds a rail to top and bottom.
+Adds a rail to top and bottom. You can specify minimal height the panel
+has to feature.
 
 #### `makeTightFrame`
 ```
-makeTightFrame(self, width, slotwidth, hspace, vspace)
+makeTightFrame(self, width, slotwidth, hspace, vspace, minWidth=0, minHeight=0)
 ```
 Build a full frame with board perimeter milled out.
 Add your boards to the panel first using appendBoard or makeGrid.
@@ -520,20 +545,17 @@ hspace - horizontal space between board outline and substrate
 
 vspace - vertical space between board outline and substrate
 
+minWidth - if the panel doesn't meet this width, it is extended
+
+minHeight - if the panel doesn't meet this height, it is extended
+
 #### `makeVCuts`
 ```
-makeVCuts(self, cuts, boundCurves=False)
+makeVCuts(self, cuts, boundCurves=False, offset=0)
 ```
 Take a list of lines to cut and performs V-CUTS. When boundCurves is
 set, approximate curved cuts by a line from the first and last point.
 Otherwise, raise an exception.
-
-#### `mergeDrcRules`
-```
-mergeDrcRules(self)
-```
-Examine DRC rules of the source boards, merge them into a single set of
-rules and store them in *.pro file
 
 #### `panelBBox`
 ```
@@ -548,20 +570,30 @@ panelCorners(self, horizontalOffset=0, verticalOffset=0)
 Return the list of top-left, top-right, bottom-left and bottom-right
 corners of the panel. You can specify offsets.
 
+#### `refillZonesAndSave`
+```
+refillZonesAndSave(self)
+```
+None
+
 #### `renderBackbone`
 ```
-renderBackbone(self, vthickness, hthickness, vcut, hcut)
+renderBackbone(self, vthickness, hthickness, vcut, hcut, vskip=0, hskip=0)
 ```
 Render horizontal and vertical backbone lines. If zero thickness is
 specified, no backbone is rendered.
 
 vcut, hcut specifies if vertical or horizontal backbones should be cut.
 
+vskip and hskip specify how many backbones should be skipped before
+rendering one (i.e., skip 1 meand that every other backbone will be
+rendered)
+
 Return a list of cuts
 
 #### `save`
 ```
-save(self)
+save(self, reconstructArcs=False)
 ```
 Saves the panel to a file and makes the requested changes to the prl and
 pro files.
@@ -619,6 +651,17 @@ Set V-cut clearance
 setVCutLayer(self, layer)
 ```
 Set layer on which the V-Cuts will be rendered
+
+#### `transferProjectSettings`
+```
+transferProjectSettings(self)
+```
+Examine DRC rules of the source boards, merge them into a single set of
+rules and store them in *.kicad_pro file. Also stores board DRC
+exclusions.
+
+Also, transfers the list of net classes from the internal representation
+into the project file.
 
 #### `translate`
 ```
@@ -701,7 +744,7 @@ of another board
 
 #### `serialize`
 ```
-serialize(self)
+serialize(self, reconstructArcs=False)
 ```
 Produces a list of PCB_SHAPE on the Edge.Cuts layer
 

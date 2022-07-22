@@ -9,8 +9,9 @@ The installation steps differ slightly based on the operating system you use, bu
 consists of three steps:
 
 - perform the basic installation:
-  - [Linux/MacOS](#installation-on-linux-and-macos)
+  - [Linux](#installation-on-linux-and-macos)
   - [Windows](#installation-on-windows)
+  - [MacOS](macosInstallation.md) (**Extra steps are required, please, read the guide**)
   - Or you can run KiKit inside [Docker](#running-kikit-via-docker) - which
     might be useful e.g., for continuous integration.
   - If you would like to install special version of KiKit (e.g., nightly or a
@@ -32,15 +33,21 @@ If you want to upgrade KiKit, you have to perform two steps:
 - then you can upgrade the PCM packages within KiCAD. Note that this step is
   often not needed. If it will be needed, the release notes will say so.
 
-## Installation on Linux and MacOS
+## Installation on Linux
 
-Simply invoke in terminal:
+The installation consists of a single command you have to enter into the
+terminal. If you installed KiCAD via package manager (apt, yum, etc.) you can
+use a regular terminal and enter `pip3 install kikit`. Now you are ready to use
+KiKit.
 
-```
-> pip install kikit
-# or  (based on your distribution)
-> pip3 install kikit
-```
+However, if you installed KiCAD via Flatpak, you have to open a special terminal
+as Flatpak sandboxes the applications. Open terminal and invoke `flatpak run
+--command=sh org.kicad.KiCad`, this will open a terminal session inside the
+KiCAD’s sandbox. Now you can install pip via `python3 -m ensurepip` and then,
+inside the same terminal you can install KiKit: `python3 -m pip install kikit`.
+If you would like to use CLI interface, all commands have to be invoked inside
+the shell `flatpak run --command=sh org.kicad.KiCad`, and, instead of `kikit
+something` you have to use `python -m kikit.ui something`.
 
 Now you can test that it works:
 

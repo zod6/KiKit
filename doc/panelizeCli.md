@@ -69,9 +69,7 @@ To give and example, consider the two following configurations:
         "width": "3mm"
     },
     "framing": {
-        "type": "frame",
-        "frameWidth": "100mm",
-        "frameHeight": "100mm"
+        "type": "frame"
     }
 }
 
@@ -94,9 +92,7 @@ When we merge `B` into `A`, we get:
     },
     "framing": {
         "type": "rails"
-        "width": "5mm",
-        "frameWidth": "100mm",
-        "frameHeight": "100mm"
+        "width": "5mm"
     }
 }
 ```
@@ -155,34 +151,45 @@ the CLI by specifying it first and omitting the `type` word; e.g., `--cuts
 
 ## Layout
 
-**Types**: grid
+**Types**: grid, plugin
 
 **Common options**:
 
-- `rows`, `cols`: Specify the number of boards in the grid pattern
 - `hspace`, `vspace`, `space`: Specify the gap between the boards. You can
   specify separately vertical and horizontal spacing or you can specify `space`
   to make them the same (it has higher priority).
 - `rotation`: Rotate the boards before placing them in the panel
-- `alternation`: Specify alternations of board rotation.
-    - `none`: Do not alternate
-    - `rows`: Rotate boards by 180° on every next row
-    - `cols`: Rotate boards by 180° on every next column
-    - `rowsCols`: Rotate boards by 180° based on a chessboard pattern
 - `renamenet`, `renameref`: A pattern by which to rename the nets and
   references. You can use `{n}` and `{orig}` to get the board number and
   original name. Default values are `Board_{n}-{orig}` for nets and `{orig}` for
   references.
-- `vbackbone`, `hbackbone`: The width of vertical and horizontal backbone (0
-  means no backbone). The backbone does not increase the spacing of the boards.
-- `vbonecut`, `hbonecut`: true/false. If there are both backbones specified,
-  specifies if there should be a vertical or horizontal cut (or both) where the
-  backbones cross.
 
 #### Grid
 
 The boars are placed in a grid pattern connected by tabs. There are no special
 options.
+
+- `rows`, `cols`: Specify the number of boards in the grid pattern
+- `alternation`: Specify alternations of board rotation.
+    - `none`: Do not alternate
+    - `rows`: Rotate boards by 180° on every next row
+    - `cols`: Rotate boards by 180° on every next column
+    - `rowsCols`: Rotate boards by 180° based on a chessboard pattern
+- `vbackbone`, `hbackbone`: The width of vertical and horizontal backbone (0
+  means no backbone). The backbone does not increase the spacing of the boards.
+- `vboneskip`, `hboneskip`: Skip every n backbones. I.e., 1 means place only
+  every other backbone.
+- `vbonecut`, `hbonecut`: true/false. If there are both backbones specified,
+  specifies if there should be a vertical or horizontal cut (or both) where the
+  backbones cross.
+
+#### Plugin
+
+Implements a custom layout based on a plugin.
+
+- `code`: the plugin specification. See (plugin documentation)[plugin.md] for
+  more details
+- `arg`: text argument for the user plugin
 
 ## Source
 
@@ -231,7 +238,7 @@ must lie inside the
 
 ## Tabs
 
-**Types**: fixed, spacing, full, annotation
+**Types**: fixed, spacing, full, annotation, plugin
 
 Place tabs. To make some of the options clear, please see the [explanation of
 tab placement process](understandingTabs.md).
@@ -282,11 +289,20 @@ field of the component as `KIKIT:<propertyname>`:
 
 - `width`: width of the tab.
 
+#### Plugin
+
+Tabs based on a plugin.
+
+- `code`: the plugin specification. See (plugin documentation)[plugin.md] for
+  more details
+- `arg`: text argument for the user plugin
+
+
 ## Cuts
 
 Specify how to perform the cuts on the tabs separating the board.
 
-**Types**: none, mousebites, vcuts
+**Types**: none, mousebites, vcuts, layer, plugin
 
 #### None
 
@@ -305,10 +321,30 @@ Use mousebites to
 
 #### V-Cuts
 
-- `clearance` - specify clearance for copper in V-cuts
+- `clearance` - specify clearance for copper around V-cuts
 - `cutcurves` - true/false - specify if curves should be approximated by
   straight cuts (e.g., for cutting tabs on circular boards)
+- `offset` - specify the offset, positive offset puts the cuts into the board,
+  negative puts the cuts into the tabs
 - `layer` - specify the layer to render V-cuts on.
+
+#### Layer
+
+When KiKit reports it cannot perform cuts, you can render the cuts into a layer
+with this option to understand what's going on. Shouldn't be used for the final
+design.
+
+- `layer` - specify the layer to render the cuts on.
+- `prolong` - distance for tangential prolongation of the cuts. It has the same
+  meaning as mousebites.
+
+#### Plugin
+
+Cuts based on a plugin.
+
+- `code`: the plugin specification. See (plugin documentation)[plugin.md] for
+  more details
+- `arg`: text argument for the user plugin
 
 
 ## Framing
@@ -316,7 +352,7 @@ Use mousebites to
 KiKit allows you to frame the panel with a full frame, or bottom/top or
 left/right rails.
 
-**Types**: none, railstb, railslr, frame, tightframe
+**Types**: none, railstb, railslr, frame, tightframe, plugin
 **Common options**:
 
 - `hspace`, `vspace`, `space` - specify the space between PCB and the
@@ -324,6 +360,9 @@ left/right rails.
 - `width` - specify with of the rails or frame
 - `fillet`, `chamfer` - fillet/chamfer frame corners. Specify radius or chamfer
   size.
+- `mintotalheight`, `mintotalwidth` – if needed, add extra material to the rail
+  or frame to meet the minimal requested size. Useful for services that require
+  minimal panel size.
 
 #### Railstb/Railslr
 
@@ -343,12 +382,20 @@ boards have just a milled slot around their perimeter.
 
 - `slotwidth` - width of the milled slot.
 
+#### Plugin
+
+Frame based on a plugin.
+
+- `code`: the plugin specification. See (plugin documentation)[plugin.md] for
+  more details
+- `arg`: text argument for the user plugin
+
 ## Tooling
 
 Add tooling holes to the (rail/frame of) the panel. The holes are positioned
 by
 
-**Types**: none, 3hole, 4hole
+**Types**: none, 3hole, 4hole, plugin
 
 **Common options**:
 
@@ -357,20 +404,38 @@ by
 - `paste` - if true, the holes are included in the paste layer (therefore they
   appear on the stencil).
 
+#### Plugin
+
+Tooling based on a plugin.
+
+- `code`: the plugin specification. See (plugin documentation)[plugin.md] for
+  more details
+- `arg`: text argument for the user plugin
+
 ## Fiducials
 
 Add fiducial to the (rail/frame of) the panel.
 
-**Types**: none, 3fid, 4fid
+**Types**: none, 3fid, 4fid, plugin
 
 **Common options**:
 
 - `hoffset`, `voffset` - specify the offset from from panel edges
 - `coppersize`, `opening` - diameter of the copper spot and solder mask opening
 
+#### Plugin
+
+Fiducials based on a plugin.
+
+- `code`: the plugin specification. See (plugin documentation)[plugin.md] for
+  more details
+- `arg`: text argument for the user plugin
+
 ## Text
 
-Add text to the panel. Allows you to put a single block of text on panel. If you
+Add text to the panel. Allows you to put a single block of text on panel. You
+can use variables enclosed in `{}`. E.g. `{boardTitle} | {boardDate}`. The list
+of all available variables in listed bellow.  If you
 need more text or more sophisticated placing options, see `script` option from
 `postprocess`.
 
@@ -393,12 +458,26 @@ need more text or more sophisticated placing options, see `script` option from
   Default `center`
 - `thickness` - stroke thickness. Default `0.3mm`.
 - `layer` - specify text layer
+- `plugin` - specify the plugin that provides extra variables for the text
+
+### Available variables in text
+
+- `date` - formats current date as `<year>-<month>-<day>`
+- `time24` - formats current time in 24-hour format
+- `boardTitle` - the title from the source board
+- `boardDate` - the date from the source board
+- `boardRevision` - the revision from the source board
+- `boardCompany` - the company from the source board
+- `boardComment1`-`boardComment9` - comments from the source board
+
+You can get extra variables by providing custom [text plugin](plugins.md) via
+the `plugin` field.
 
 ## Page
 
 Sets page size on the resulting panel and position the panel in the page. The
 type of style dictates paper size. The default `inherit` option inherits paper
-size from the source board.
+size from the source board. This feature is not supported on KiCAD 5
 
 **Types**: `inherit`, `custom`, `A0`, `A1`, `A2`, `A3`, `A4`, `A5`, `A`, `B`,
 `C`, `D`, `E`, `USLetter`, `USLegal`, `USLedger`, `A0-portrait`, `A1-portrait`,
@@ -418,6 +497,30 @@ size from the source board.
 Instead of the pre-defined paper size you can also specify a custom paper size
 via `width` and `height`.
 
+## Copperfill
+
+Fill non-board areas of the panel with copper.
+
+**Types**: none, solid, hatched
+
+**Common options**:
+
+- `clearance` - optional extra clearance from the board perimeters. Suitable
+  for, e.g., not filling the tabs with copper.
+- `layers` - comma-separated list of layer to fill. Default top and bottom.
+
+### Solid
+
+Fill with solid copper.
+
+### Hatched
+
+Use hatch pattern for the fill.
+
+- `width` - the width of the strokes
+- `spacing` - the space between the strokes
+- `orientation` - the orientation of the strokes
+
 
 ## Post
 
@@ -432,6 +535,11 @@ Finishing touches to the panel.
 - `millradius` - simulate the milling operation (add fillets to the internal
   corners). Specify mill radius (usually 1 mm). 0 radius disables the
   functionality.
+- `reconstructarcs` - the panelization process works on top of a polygonal
+  representation of the board. This options allows to reconstruct the arcs in
+  the design before saving the panel.
+- `refillzones` – refill the user zones after the panel is build. This is only
+  necessary when you want your zones to avoid cuts in panel.
 - `script` - a path to custom Python file. The file should contain a function
   `kikitPostprocess(panel, args)` that receives the prepared panel as the
   `kikit.panelize.Panel` object and the user-supplied arguments as a string -

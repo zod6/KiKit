@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Tuple, Union
+from kikit.defs import Layer
 from kikit.typing import Box
 from pcbnewTransition import pcbnew, isV6
 from kikit.intervals import Interval, AxialLine
-from pcbnew import wxPoint, wxRect
+from pcbnew import wxPoint, wxRect, EDA_RECT
 import os
 from itertools import product, chain, islice
 import numpy as np
@@ -14,6 +15,10 @@ PKG_BASE = os.path.dirname(__file__)
 KIKIT_LIB = os.path.join(PKG_BASE, "resources/kikit.pretty")
 SHP_EPSILON = pcbnew.FromMM(0.001) # Common factor of enlarging substrates to
                                    # cover up numerical imprecisions of Shapely
+
+KiLength = int
+KiAngle = int
+KiKitPoint = Union[pcbnew.wxPoint, Tuple[int, int]]
 
 def fromDegrees(angle):
     return angle * 10
@@ -29,12 +34,22 @@ def toMm(kiUnits):
     """Convert KiCAD internal units to millimeters"""
     return pcbnew.ToMM(int(kiUnits))
 
-def fitsIn(what, where):
-    """ Return true iff 'what' (wxRect) is fully contained in 'where' (wxRect) """
-    return (what.GetX() >= where.GetX() and
-            what.GetX() + what.GetWidth() <= where.GetX() + where.GetWidth() and
-            what.GetY() >= where.GetY() and
-            what.GetY() + what.GetHeight() <= where.GetY() + where.GetHeight())
+def fitsIn(what: Union[wxRect, wxPoint, EDA_RECT], where: wxRect) -> bool:
+    """
+    Return true iff 'what' (wxRect or wxPoint) is fully contained in 'where'
+    (wxRect)
+    """
+    assert isinstance(what, (wxRect, EDA_RECT, wxPoint))
+    if isinstance(what, wxPoint):
+        return (what[0] >= where.GetX() and
+                what[0] <= where.GetX() + where.GetWidth() and
+                what[1] >= where.GetY() and
+                what[1] <= where.GetY() + where.GetHeight())
+    else:
+        return (what.GetX() >= where.GetX() and
+                what.GetX() + what.GetWidth() <= where.GetX() + where.GetWidth() and
+                what.GetY() >= where.GetY() and
+                what.GetY() + what.GetHeight() <= where.GetY() + where.GetHeight())
 
 def combineBoundingBoxes(a, b):
     """ Retrun wxRect as a combination of source bounding boxes """
@@ -47,11 +62,11 @@ def combineBoundingBoxes(a, b):
     # return wxRect(topLeft, bottomRight)
     return wxRect(x1, y1, x2 - x1, y2 - y1)
 
-def collectEdges(board, layerName, sourceArea=None):
+def collectEdges(board, layerId, sourceArea=None):
     """ Collect edges in sourceArea on given layer including footprints """
     edges = []
     for edge in chain(board.GetDrawings(), *[m.GraphicalItems() for m in board.GetFootprints()]):
-        if edge.GetLayerName() != layerName:
+        if edge.GetLayer() != layerId:
             continue
         if isV6() and isinstance(edge, pcbnew.PCB_DIMENSION_BASE):
             continue
@@ -64,8 +79,10 @@ def collectItems(boardCollection, sourceArea):
     return list([x for x in boardCollection if fitsIn(x.GetBoundingBox(), sourceArea)])
 
 def collectFootprints(boardCollection, sourceArea):
-    """ Returns a list of board footprints fully contained in the source area ignoring reference a value label"""
-    return list([x for x in boardCollection if fitsIn(x.GetBoundingBox(False, False), sourceArea)])
+    """
+    Returns a list of board footprints Which origin fits inside the source area.
+    """
+    return list([x for x in boardCollection if fitsIn(x.GetPosition(), sourceArea)])
 
 def getBBoxWithoutContours(edge):
     width = edge.GetWidth()
@@ -100,7 +117,7 @@ def findBoardBoundingBox(board, sourceArea=None):
     Returns a bounding box (wxRect) of all Edge.Cuts items either in
     specified source area (wxRect) or in the whole board
     """
-    edges = collectEdges(board, "Edge.Cuts", sourceArea)
+    edges = collectEdges(board, Layer.Edge_Cuts, sourceArea)
     return findBoundingBox(edges)
 
 def rectCenter(rect):
