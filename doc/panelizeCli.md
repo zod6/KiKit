@@ -163,6 +163,8 @@ the CLI by specifying it first and omitting the `type` word; e.g., `--cuts
   references. You can use `{n}` and `{orig}` to get the board number and
   original name. Default values are `Board_{n}-{orig}` for nets and `{orig}` for
   references.
+- `baketext`: A flag that indicates if text variables should be substituted or
+  not.
 
 #### Grid
 
@@ -231,7 +233,7 @@ Specify the source rectangle explicitly.
 KiKit offers you to place an annotation footprint `kikit:Board` into your design
 file to name the board. The area is determined by a bounding box of the lines in
 the `Edge.Cuts` layer that the arrows point to. Note that the tip of the arrow
-must lie inside the
+must lie on the PCB edge or slightly outside of it.
 
 - `ref`: specify the annotation symbol reference
 - `tolerance`: see above
@@ -269,6 +271,14 @@ Create tabs that are full width of the PCB. Suitable for PCBs separated by
 V-Cuts. This mode does not make much sense for mousebites in practice. Note that
 in this mode the cuts do not faithfully copy the PCB outline and, instead, they
 cut the bounding box of the PCB. There are no other options.
+
+- `cutout`: When your design features open pockets on the side, this parameter
+  specifies extra cutout depth in order to ensure that a sharp corner of the
+  pocket can be milled. The default is 1 mm.
+- `patchcorners`: The full tabs are appended to the nearest flat face of the
+  PCB. If the PCB has sharp corners, you want to add patches of substrate to
+  these corners. However, if the PCB has fillet or miter, you don't want to
+  apply the patches.
 
 #### Corner
 
@@ -359,7 +369,8 @@ left/right rails.
   frame/rail. `space` overrides `hspace and vspace`.
 - `width` - specify with of the rails or frame
 - `fillet`, `chamfer` - fillet/chamfer frame corners. Specify radius or chamfer
-  size.
+  size. You can also separately specify `chamferwidth` and `chamferheight` to
+  create a non 45° chamfer.
 - `mintotalheight`, `mintotalwidth` – if needed, add extra material to the rail
   or frame to meet the minimal requested size. Useful for services that require
   minimal panel size.
@@ -422,6 +433,8 @@ Add fiducial to the (rail/frame of) the panel.
 
 - `hoffset`, `voffset` - specify the offset from from panel edges
 - `coppersize`, `opening` - diameter of the copper spot and solder mask opening
+- `paste` - if true, the fiducials are included in the paste layer (therefore they
+  appear on the stencil).
 
 #### Plugin
 
@@ -435,9 +448,13 @@ Fiducials based on a plugin.
 
 Add text to the panel. Allows you to put a single block of text on panel. You
 can use variables enclosed in `{}`. E.g. `{boardTitle} | {boardDate}`. The list
-of all available variables in listed bellow.  If you
-need more text or more sophisticated placing options, see `script` option from
-`postprocess`.
+of all available variables in listed bellow. In the case you need more
+independent texts on the panel, you can use sections names `text2`, `text3` and
+`text3` to add at most 4 text. All these sections behave the same and accept the
+same options.
+
+If you need more texts or more sophisticated placing options, see `script`
+option from `postprocess`.
 
 **Types**: none, simple
 
@@ -489,8 +506,9 @@ size from the source board. This feature is not supported on KiCAD 5
 
 - `anchor` - Point of the panel to be placed at given position. Can be one of
   `tl`, `tr`, `bl`, `br` (corners), `mt`, `mb`, `ml`, `mr` (middle of sides),
-  `c` (center). The anchors refer to the panel outline. Default `tl`
-- `posx`, `posy` - the position of the panel on the page. Default `15mm`
+  `c` (center). The anchors refer to the panel outline. Default `mt`
+- `posx`, `posy` - the position of the panel on the page. Default `50%` for
+  `posx` and `20mm` for `posy`.
 
 ### Custom
 
@@ -507,7 +525,8 @@ Fill non-board areas of the panel with copper.
 
 - `clearance` - optional extra clearance from the board perimeters. Suitable
   for, e.g., not filling the tabs with copper.
-- `layers` - comma-separated list of layer to fill. Default top and bottom.
+- `layers` - comma-separated list of layer to fill. Default top and bottom. You
+  can specify a shortcut `all` to fill all layers.
 
 ### Solid
 
@@ -535,6 +554,8 @@ Finishing touches to the panel.
 - `millradius` - simulate the milling operation (add fillets to the internal
   corners). Specify mill radius (usually 1 mm). 0 radius disables the
   functionality.
+- `millradiusouter` ­– same as the previous one, modifies only board outer
+  counter. No internal features of the board are affected.
 - `reconstructarcs` - the panelization process works on top of a polygonal
   representation of the board. This options allows to reconstruct the arcs in
   the design before saving the panel.
@@ -553,5 +574,6 @@ Finishing touches to the panel.
 - `origin` - specify if the auxilary origin an grid origin should be placed. Can
   be one of `tl`, `tr`, `bl`, `br` (corners), `mt`, `mb`, `ml`, `mr` (middle of
   sides), `c` (center). Empty string does not changes the origin.
+- `dimensions` - `true` or `false`. Draw dimensions with the panel size.
 
 

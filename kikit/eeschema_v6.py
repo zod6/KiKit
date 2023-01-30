@@ -109,7 +109,7 @@ def collectSymbols(filename, path=""):
     Crawl given sheet and return two lists - one with symbols, one with
     symbol instances
     """
-    with open(filename) as f:
+    with open(filename, encoding="utf-8") as f:
         sheetSExpr = parseSexprF(f)
     symbols, instances = [], []
     for item in sheetSExpr.items:
@@ -124,14 +124,17 @@ def collectSymbols(filename, path=""):
                 f = dirname + "/" + f
             s, i = collectSymbols(f, path + "/" + uuid)
             symbols += s
-            instances += i
+            # The instances shouldn't appear in subsheets, however, in cases
+            # when the sheet used to be a top-level sheet, they are preserved by
+            # KiCAD. So we intentionally ignore them.
+            #
+            # instances += i
             continue
         if isSymbolInstances(item):
             for p in item.items:
                 if isPath(p):
                     instances.append(extractSymbolInstance(p))
             continue
-
     return symbols, instances
 
 

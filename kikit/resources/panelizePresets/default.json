@@ -15,6 +15,7 @@
         "vboneskip": 0,
         "vbonecut": true,
         "hbonecut": true,
+        "baketext": true,
         "code": "none",
         "arg": ""
     },
@@ -37,8 +38,11 @@
         "mindistance": "0mm",
         "spacing": "10mm",
         "tabfootprints": "kikit:Tab",
+        "fillet": "0mm",
         "code": "none",
-        "arg": ""
+        "arg": "",
+        "cutout": "1mm",
+        "patchcorners": true
     },
     "cuts": {
         "type": "none",
@@ -64,7 +68,10 @@
         "vspace": "2mm",
         "mintotalheight": "0mm",
         "mintotalwidth": "0mm",
-        "chamfer": "0mm",
+        "maxtotalheight": "10m",
+        "maxtotalwidth": "10m",
+        "chamferwidth": "0mm",
+        "chamferheight": "0mm",
         "fillet": "0mm",
         "code": "none",
         "arg": ""
@@ -74,6 +81,7 @@
         "layout": "3hole",
         "hoffset": "0mm",
         "voffset": "0mm",
+        "size": "2mm",
         "paste": false,
         "code": "none",
         "arg": ""
@@ -84,10 +92,56 @@
         "voffset": "0mm",
         "coppersize": "1mm",
         "opening": "1mm",
+        "paste": false,
         "code": "none",
         "arg": ""
     },
     "text": {
+        "type": "none",
+        "text": "",
+        "anchor": "mt",
+        "hoffset": "0mm",
+        "voffset": "0mm",
+        "orientation": "0deg",
+        "width": "1.5mm",
+        "height": "1.5mm",
+        "hjustify": "center",
+        "vjustify": "center",
+        "thickness": "0.3mm",
+        "layer": "F.SilkS",
+        "plugin": "none"
+    },
+    "text2": {
+        "type": "none",
+        "text": "",
+        "anchor": "mt",
+        "hoffset": "0mm",
+        "voffset": "0mm",
+        "orientation": "0deg",
+        "width": "1.5mm",
+        "height": "1.5mm",
+        "hjustify": "center",
+        "vjustify": "center",
+        "thickness": "0.3mm",
+        "layer": "F.SilkS",
+        "plugin": "none"
+    },
+    "text3": {
+        "type": "none",
+        "text": "",
+        "anchor": "mt",
+        "hoffset": "0mm",
+        "voffset": "0mm",
+        "orientation": "0deg",
+        "width": "1.5mm",
+        "height": "1.5mm",
+        "hjustify": "center",
+        "vjustify": "center",
+        "thickness": "0.3mm",
+        "layer": "F.SilkS",
+        "plugin": "none"
+    },
+    "text4": {
         "type": "none",
         "text": "",
         "anchor": "mt",
@@ -115,16 +169,18 @@
         "copperfill": false,
         "reconstructarcs": false,
         "millradius": "0mm",
+        "millradiusouter": "0mm",
         "script": "",
         "scriptarg": "",
         "origin": "tl",
-        "refillzones": false
+        "refillzones": false,
+        "dimensions": false
     },
     "page": {
         "type": "inherit",
-        "anchor": "tl",
-        "posx": "15mm",
-        "posy": "15mm",
+        "anchor": "mt",
+        "posx": "50%",
+        "posy": "20mm",
         "width": "1000mm",
         "height": "1000mm"
     },

@@ -172,6 +172,15 @@ def completeSection(section):
 @click.option("--text", "-t", type=Section(),
     help="Override text settings.",
     **addCompatibleShellCompletion(completeSection(TEXT_SECTION)))
+@click.option("--text2", type=Section(),
+    help="Override text settings.",
+    **addCompatibleShellCompletion(completeSection(TEXT_SECTION)))
+@click.option("--text3", type=Section(),
+    help="Override text settings.",
+    **addCompatibleShellCompletion(completeSection(TEXT_SECTION)))
+@click.option("--text4", type=Section(),
+    help="Override text settings.",
+    **addCompatibleShellCompletion(completeSection(TEXT_SECTION)))
 @click.option("--copperfill", "-u", type=Section(),
     help="Override copper fill settings.",
     **addCompatibleShellCompletion(completeSection(COPPERFILL_SECTION)))
@@ -187,7 +196,8 @@ def completeSection(section):
 @click.option("--dump", "-d", type=click.Path(file_okay=True, dir_okay=False),
     help="Dump constructured preset into a JSON file.")
 def panelize(input, output, preset, plugin, layout, source, tabs, cuts, framing,
-             tooling, fiducials, text, copperfill, page, post, debug, dump):
+             tooling, fiducials, text, text2, text3, text4, copperfill, page,
+             post, debug, dump):
     """
     Panelize boards
     """
@@ -200,8 +210,9 @@ def panelize(input, output, preset, plugin, layout, source, tabs, cuts, framing,
 
         preset = ki.obtainPreset(preset,
             layout=layout, source=source, tabs=tabs, cuts=cuts, framing=framing,
-            tooling=tooling, fiducials=fiducials, text=text, copperfill=copperfill,
-            page=page, post=post, debug=debug)
+            tooling=tooling, fiducials=fiducials, text=text,text2=text2,
+            text3=text3, text4=text4, copperfill=copperfill, page=page,
+            post=post, debug=debug)
 
         doPanelization(input, output, preset, plugin)
 
@@ -223,11 +234,11 @@ def doPanelization(input, output, preset, plugins=[]):
     """
     from kikit import panelize_ui_impl as ki
     from kikit.panelize import Panel
-    from pcbnewTransition.transition import isV6, pcbnew
+    from pcbnewTransition.transition import pcbnew
     from pcbnew import LoadBoard
     from itertools import chain
 
-    if preset["debug"]["deterministic"] and isV6():
+    if preset["debug"]["deterministic"]:
         pcbnew.KIID.SeedGenerator(42)
     if preset["debug"]["drawtabfail"]:
         import kikit.substrate
@@ -256,8 +267,7 @@ def doPanelization(input, output, preset, plugins=[]):
 
     useHookPlugins(lambda x: x.afterLayout(panel, substrates))
 
-    tabCuts = ki.buildTabs(preset, panel, substrates,
-        framingSubstrates, ki.frameOffset(preset["framing"]))
+    tabCuts = ki.buildTabs(preset, panel, substrates, framingSubstrates)
 
     useHookPlugins(lambda x: x.afterTabs(panel, tabCuts, backboneCuts))
 
@@ -267,7 +277,8 @@ def doPanelization(input, output, preset, plugins=[]):
 
     ki.buildTooling(preset, panel)
     ki.buildFiducials(preset, panel)
-    ki.buildText(preset["text"], panel)
+    for textSection in ["text", "text2", "text3", "text4"]:
+        ki.buildText(preset[textSection], panel)
     ki.buildPostprocessing(preset["post"], panel)
 
     ki.makeTabCuts(preset, panel, tabCuts)
@@ -278,8 +289,8 @@ def doPanelization(input, output, preset, plugins=[]):
     ki.buildCopperfill(preset["copperfill"], panel)
 
     ki.setStackup(preset["source"], panel)
-    ki.positionPanel(preset["page"], panel)
     ki.setPageSize(preset["page"], panel, board)
+    ki.positionPanel(preset["page"], panel)
 
     ki.runUserScript(preset["post"], panel)
     useHookPlugins(lambda x: x.finish(panel))
@@ -302,7 +313,9 @@ def doPanelization(input, output, preset, plugins=[]):
     help="Include debug traces or drawings in the panel.")
 @click.option("--keepAnnotations/--stripAnnotations", default=True,
     help="Do not strip annotations" )
-def separate(input, output, source, page, debug, keepannotations):
+@click.option("--preserveArcs/--looseArcs", default=True,
+    help="Preserve arcs in the files" )
+def separate(input, output, source, page, debug, keepannotations, preservearcs):
     """
     Separate a single board out of a multi-board design. The separated board is
     placed in the middle of the sheet.
@@ -313,14 +326,15 @@ def separate(input, output, source, page, debug, keepannotations):
     try:
         from kikit import panelize_ui_impl as ki
         from kikit.panelize import Panel
-        from pcbnewTransition.transition import isV6, pcbnew
-        from pcbnew import LoadBoard, wxPointMM
+        from kikit.units import mm
+        from pcbnewTransition.transition import pcbnew
+        from pcbnew import LoadBoard, VECTOR2I
         from kikit.common import fakeKiCADGui
         app = fakeKiCADGui()
 
         preset = ki.obtainPreset([], validate=False, source=source, page=page, debug=debug)
 
-        if preset["debug"]["deterministic"] and isV6():
+        if preset["debug"]["deterministic"]:
             pcbnew.KIID.SeedGenerator(42)
 
         board = LoadBoard(input)
@@ -331,14 +345,14 @@ def separate(input, output, source, page, debug, keepannotations):
         panel.inheritProperties(board)
         panel.inheritTitleBlock(board)
 
-        destination = wxPointMM(150, 100)
+        destination = VECTOR2I(150 * mm, 100 * mm)
         panel.appendBoard(input, destination, sourceArea,
             interpretAnnotations=(not keepannotations))
         ki.setStackup(preset["source"], panel)
-        ki.positionPanel(preset["page"], panel)
         ki.setPageSize(preset["page"], panel, board)
+        ki.positionPanel(preset["page"], panel)
 
-        panel.save(reconstructArcs=True)
+        panel.save(reconstructArcs=preservearcs)
     except Exception as e:
         import sys
         sys.stderr.write("An error occurred: " + str(e) + "\n")

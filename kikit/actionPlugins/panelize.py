@@ -70,11 +70,9 @@ def transplateBoard(source, target):
     for n in [n for _, n in source.GetNetInfo().NetsByNetcode().items()]:
         targetNetinfo.AppendNet(n)
 
-    if isV6():
-        d = target.GetDesignSettings()
-        d.CloneFrom(source.GetDesignSettings())
-    else:
-        target.SetDesignSettings(source.GetDesignSettings())
+    d = target.GetDesignSettings()
+    d.CloneFrom(source.GetDesignSettings())
+
     target.SetProperties(source.GetProperties())
     target.SetPageSettings(source.GetPageSettings())
     target.SetTitleBlock(source.GetTitleBlock())
@@ -568,6 +566,7 @@ class PanelizeDialog(wx.Dialog):
                 with open(pathname, "r") as file:
                     preset = json.load(file)
                     self.populateInitialValue(preset)
+                    self.OnChange()
             except Exception as e:
                 wx.MessageBox(f"Cannot load configuration: {e}", "Error",
                     style=wx.OK | wx.ICON_ERROR, parent=self)

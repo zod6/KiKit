@@ -9,7 +9,7 @@ The installation steps differ slightly based on the operating system you use, bu
 consists of three steps:
 
 - perform the basic installation:
-  - [Linux](#installation-on-linux-and-macos)
+  - [Linux](#installation-on-linux)
   - [Windows](#installation-on-windows)
   - [MacOS](macosInstallation.md) (**Extra steps are required, please, read the guide**)
   - Or you can run KiKit inside [Docker](#running-kikit-via-docker) - which
@@ -203,7 +203,7 @@ When you have multiple versions of KiCAD installed, it might be desirable to run
 KiKit with one or another (e.g., to not convert your designs into new format).
 
 KiKit loads the Python API directly via a module, so which module is loaded
-(which KiCAD version is used) follows standard Python conversion. Therefore, to
+(which KiCAD version is used) follows standard Python conventions. Therefore, to
 choose a particular KiCAD version, just specify the environmental variable
 `PYTHONPATH`. The path have to point to a folder containing the module
 (`pcbnew.py` file).

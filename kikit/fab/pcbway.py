@@ -1,5 +1,5 @@
 import click
-from pcbnewTransition import pcbnew, isV6
+from pcbnewTransition import pcbnew
 import csv
 import os
 import re
@@ -44,6 +44,8 @@ def collectBom(components, manufacturerFields, partNumberFields,
             continue
         reference = getReference(c)
         if reference.startswith("#PWR") or reference.startswith("#FL") or reference in ignore:
+            continue
+        if hasattr(c, "in_bom") and not c.in_bom:
             continue
         manufacturer = None
         for manufacturerName in manufacturerFields:
@@ -144,6 +146,7 @@ def exportPcbway(board, outputdir, assembly, schematic, ignore,
     """
     Prepare fabrication files for PCBWay including their assembly service
     """
+    ensureValidBoard(board)
     loadedBoard = pcbnew.LoadBoard(board)
 
     if drc:
@@ -163,6 +166,10 @@ def exportPcbway(board, outputdir, assembly, schematic, ignore,
         return
     if schematic is None:
         raise RuntimeError("When outputing assembly data, schematic is required")
+
+    ensureValidSch(schematic)
+
+
     components = extractComponents(schematic)
     correctionFields    = [x.strip() for x in corrections.split(",")]
     manufacturerFields  = [x.strip() for x in manufacturer.split(",")]

@@ -1,5 +1,5 @@
 import click
-from pcbnewTransition import pcbnew, isV6
+from pcbnewTransition import pcbnew
 import csv
 import os
 import sys
@@ -22,6 +22,8 @@ def collectBom(components, lscsFields, ignore):
         if getField(c, "DNP") is not None:
             continue
         if getField(c, "JLCPCB_IGNORE") is not None and getField(c, "JLCPCB_IGNORE") != "":
+            continue
+        if hasattr(c, "in_bom") and not c.in_bom:
             continue
         orderCode = None
         for fieldName in lscsFields:
@@ -49,8 +51,14 @@ def bomToCsv(bomData, filename):
         writer = csv.writer(csvfile)
         writer.writerow(["Comment", "Designator", "Footprint", "LCSC"])
         for cType, references in bomData.items():
-            value, footprint, lcsc = cType
-            writer.writerow([value, ",".join(references), footprint, lcsc])
+            # JLCPCB allows at most 200 components per line so we have to split
+            # the BOM into multiple lines. Let's make the chunks by 100 just to
+            # be sure.
+            CHUNK_SIZE = 100
+            for i in range(0, len(references), CHUNK_SIZE):
+                refChunk = references[i:i+CHUNK_SIZE]
+                value, footprint, lcsc = cType
+                writer.writerow([value, ",".join(refChunk), footprint, lcsc])
 
 def noFilter(footprint):
     return True
@@ -60,6 +68,7 @@ def exportJlcpcb(board, outputdir, assembly, schematic, ignore, field,
     """
     Prepare fabrication files for JLCPCB including their assembly service
     """
+    ensureValidBoard(board)
     loadedBoard = pcbnew.LoadBoard(board)
 
     if drc:
@@ -79,6 +88,9 @@ def exportJlcpcb(board, outputdir, assembly, schematic, ignore, field,
         return
     if schematic is None:
         raise RuntimeError("When outputing assembly data, schematic is required")
+
+    ensureValidSch(schematic)
+
     correctionFields = [x.strip() for x in corrections.split(",")]
     components = extractComponents(schematic)
     ordercodeFields = [x.strip() for x in field.split(",")]
