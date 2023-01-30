@@ -113,6 +113,5 @@ def exportJlcpcb(board, outputdir, assembly, schematic, ignore, field,
     if missingFields and missingerror:
         sys.exit("There are components with missing ordercode, aborting")
 
-    posData = collectPosData(loadedBoard, correctionFields, bom=components, correctionFile=correctionpatterns)
     posDataToFile(posData, os.path.join(outputdir, nametemplate.format("pos") + ".csv"))
     bomToCsv(bom, os.path.join(outputdir, nametemplate.format("bom") + ".csv"))
