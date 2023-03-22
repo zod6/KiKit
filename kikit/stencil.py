@@ -1,5 +1,5 @@
 from pcbnewTransition import pcbnew
-from pcbnew import VECTOR2I
+from pcbnewTransition.pcbnew import VECTOR2I
 import numpy as np
 import json
 from collections import OrderedDict
@@ -336,7 +336,7 @@ def setStencilLayerVisibility(boardName):
         34,
         35
     ]
-    with open(prlPath, "w") as f:
+    with open(prlPath, "w", encoding="utf-8") as f:
         json.dump(prl, f, indent=2)
     pass
 

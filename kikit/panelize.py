@@ -8,7 +8,7 @@ from pathlib import Path
 
 from typing import Any, Callable, Dict, Iterable, List, Set, Tuple, Union
 
-from pcbnew import (LoadBoard, ToMM, VECTOR2I, BOX2I, EDA_ANGLE)
+from pcbnewTransition.pcbnew import (LoadBoard, ToMM, VECTOR2I, BOX2I, EDA_ANGLE)
 from enum import Enum
 from shapely.geometry import (Polygon, MultiPolygon, Point, LineString, box,
                               GeometryCollection, MultiLineString)
@@ -65,26 +65,30 @@ class BasicGridPosition(GridPlacerBase):
     """
     def __init__(self, horSpace: int, verSpace: int,
                  hbonewidth: int=0, vbonewidth: int=0,
-                 hboneskip: int=0, vboneskip: int=0) -> None:
+                 hboneskip: int=0, vboneskip: int=0,
+                 hbonefirst: int=0, vbonefirst: int=0) -> None:
         self.horSpace = horSpace
         self.verSpace = verSpace
         self.hbonewidth = hbonewidth
         self.vbonewidth = vbonewidth
         self.hboneskip = hboneskip
         self.vboneskip = vboneskip
+        self.hbonefirst = hbonefirst
+        self.vbonefirst = vbonefirst
 
     def position(self, i: int, j: int, boardSize: Optional[BOX2I]) -> VECTOR2I:
         if boardSize is None:
             assert i == 0 and j == 0
-            return VECTOR2I(0, 0)
+            boardSize = BOX2I(VECTOR2I(0, 0), VECTOR2I(0, 0))
         hbonecount = 0 if self.hbonewidth == 0 \
-                       else i // (self.hboneskip + 1)
+                       else max((i + self.hbonefirst)  // (self.hboneskip + 1), 0)
         vbonecount = 0 if self.vbonewidth == 0 \
-                       else j // (self.vboneskip + 1)
-        return VECTOR2I(j * (boardSize.GetWidth() + self.horSpace) + \
-                            vbonecount * (self.vbonewidth + self.horSpace),
-                       i * (boardSize.GetHeight() + self.verSpace) + \
-                            hbonecount * (self.hbonewidth + self.verSpace))
+                       else max((j + self.vbonefirst) // (self.vboneskip + 1), 0)
+        xPos = j * (boardSize.GetWidth() + self.horSpace) + \
+               vbonecount * (self.vbonewidth + self.horSpace)
+        yPos = i * (boardSize.GetHeight() + self.verSpace) + \
+               hbonecount * (self.hbonewidth + self.verSpace)
+        return toKiCADPoint((xPos, yPos))
 
     def rotation(self, i: int, j: int) -> KiAngle:
         return EDA_ANGLE(0, pcbnew.DEGREES_T)
@@ -271,7 +275,7 @@ def undoTransformation(point, rotation, origin, translation):
     segment.SetStart(VECTOR2I(int(point[0]), int(point[1])))
     segment.SetEnd(VECTOR2I(0, 0))
     segment.Move(VECTOR2I(-translation[0], -translation[1]))
-    segment.Rotate(origin, -rotation)
+    segment.Rotate(origin, -1 * rotation)
     # We build a fresh VECTOR2I - otherwise there is a shared reference
     return VECTOR2I(segment.GetStartX(), segment.GetStartY())
 
@@ -411,7 +415,7 @@ def maxTabCount(edgeLen, width, minDistance):
     c = 1 + (edgeLen - minDistance) // (minDistance + width)
     return max(0, int(c))
 
-def skipBackbones(backbones: List[LineString], skip: int,
+def skipBackbones(backbones: List[LineString], skip: int, first: int,
                   key: Callable[[LineString], int]) -> List[LineString]:
     """
     Given a list of backbones, get only every (skip + 1) other one. Treats
@@ -419,7 +423,7 @@ def skipBackbones(backbones: List[LineString], skip: int,
     """
     candidates = list(set(map(key, backbones)))
     candidates.sort()
-    active = set(itertools.islice(candidates, skip, None, skip + 1))
+    active = set(itertools.islice(candidates, first - 1, None, skip + 1))
     return [x for x in backbones if key(x) in active]
 
 def bakeTextVars(board: pcbnew.BOARD) -> None:
@@ -593,7 +597,7 @@ class Panel:
                 # thus, formatting
                 prl = json.load(f, object_pairs_hook=OrderedDict)
             prl["board"]["visible_layers"] = "fffffff_ffffffff"
-            with open(self.getPrlFilepath(), "w") as f:
+            with open(self.getPrlFilepath(), "w", encoding="utf-8") as f:
                 json.dump(prl, f, indent=2)
         except IOError:
             # The PRL file is not always created, ignore it
@@ -631,7 +635,7 @@ class Panel:
 
             currentPro["net_settings"]["classes"] = sourcePro["net_settings"]["classes"]
             currentPro["net_settings"]["classes"] += [x.serialize() for x in self.newNetClasses.values()]
-            with open(self.getProFilepath(), "w") as f:
+            with open(self.getProFilepath(), "w", encoding="utf-8") as f:
                 json.dump(currentPro, f, indent=2)
         except (KeyError, FileNotFoundError):
             # This means the source board has no DRC setting. Probably a board
@@ -674,7 +678,7 @@ class Panel:
         """
         if self.pageSize is None:
             return
-        with open(self.filename, "r") as f:
+        with open(self.filename, "r", encoding="utf-8") as f:
             tree = parseSexprF(f, limit=10) # Introduce limit to speed up parsing
         # Find paper property
         paperExpr = None
@@ -703,7 +707,7 @@ class Panel:
                 Atom(str(pageSize[1]), " "),
             ]
 
-        with open(self.filename, "w") as f:
+        with open(self.filename, "w", encoding="utf-8") as f:
             f.write(str(tree))
 
 
@@ -743,7 +747,7 @@ class Panel:
         # What follows is a hack as KiCAD has no API for page access. Therefore,
         # we have to read out the page size from the source board and save it so
         # we can recover it.
-        with open(board.GetFileName(), "r") as f:
+        with open(board.GetFileName(), "r", encoding="utf-8") as f:
             tree = parseSexprF(f, limit=10) # Introduce limit to speed up parsing
         self._inheritedPageDimensions = getPageDimensionsFromAst(tree)
 
@@ -935,7 +939,7 @@ class Panel:
             self.substrates[-1].annotations = annotations
         except substrate.PositionError as e:
             point = undoTransformation(e.point, rotationAngle, originPoint, translation)
-            raise substrate.PositionError(filename + ": " + e.origMessage, point)
+            raise substrate.PositionError(f"{filename}: {e.origMessage}", point)
         for drawing in otherDrawings:
             appendItem(self.board, drawing, yieldMapping)
 
@@ -1112,7 +1116,7 @@ class Panel:
         cols - the number of boards to place in the horizontal direction
 
         destination - the center coordinates of the first board in the grid (for
-        example, VECTOR2I(100 * mm,50 * mm))
+        example, VECTOR2I(100 * mm, 50 * mm))
 
         rotation - the rotation angle to be applied to the source board before
         placing it
@@ -1351,17 +1355,21 @@ class Panel:
         to
         """
         bloatedSubstrate = prep(self.boardSubstrate.substrates.buffer(SHP_EPSILON))
+        offsetCuts = []
         for cut in cuts:
             cut = cut.simplify(SHP_EPSILON) # Remove self-intersecting geometry
             cut = prolongCut(cut, prolongation)
             offsetCut = cut.parallel_offset(offset, "left")
-            length = offsetCut.length
+            offsetCuts.append(offsetCut)
+
+        for cut in listGeometries(shapely.ops.unary_union(offsetCuts).simplify(SHP_EPSILON)):
+            length = cut.length
             count = int(length / spacing) + 1
             for i in range(count):
                 if count == 1:
-                    hole = offsetCut.interpolate(0.5, normalized=True)
+                    hole = cut.interpolate(0.5, normalized=True)
                 else:
-                    hole = offsetCut.interpolate( i * length / (count - 1) )
+                    hole = cut.interpolate( i * length / (count - 1) )
                 if bloatedSubstrate.intersects(hole):
                     self.addNPTHole(toKiCADPoint((hole.x, hole.y)), diameter)
 
@@ -1594,7 +1602,7 @@ class Panel:
             midy = (miny + maxy) / 2
 
             for x, y in product([minx, maxx], [miny, maxy]):
-                dir = normalize((midx - x, midy - y))
+                dir = normalize((np.sign(midx - x), np.sign(midy - y)))
                 a = TabAnnotation(None, (x, y), dir, width)
                 self.substrates[i].annotations.append(a)
 
@@ -1771,12 +1779,12 @@ class Panel:
         zone.SetDoNotAllowVias(noVias)
         zone.SetDoNotAllowCopperPour(noCopper)
 
-        zone.SetLayerSet(pcbnew.LSET.AllCuMask())
+        zone.SetLayerSet(pcbnew.LSET.AllCuMask(self.copperLayerCount))
 
         self.board.Add(zone)
         return zone
 
-    def addText(self, text, position, orientation=0,
+    def addText(self, text, position, orientation=fromDegrees(0),
                 width=fromMm(1.5), height=fromMm(1.5), thickness=fromMm(0.3),
                 hJustify=EDA_TEXT_HJUSTIFY_T.GR_TEXT_HJUSTIFY_CENTER,
                 vJustify=EDA_TEXT_VJUSTIFY_T.GR_TEXT_VJUSTIFY_CENTER,
@@ -1905,7 +1913,8 @@ class Panel:
         self._renderLines(lines, Layer.Cmts_User, fromMm(0.5))
 
     def renderBackbone(self, vthickness: KiLength, hthickness: KiLength,
-            vcut: bool, hcut: bool, vskip: int=0, hskip: int=0):
+            vcut: bool, hcut: bool, vskip: int=0, hskip: int=0,
+            vfirst: int=0, hfirst: int=0):
         """
         Render horizontal and vertical backbone lines. If zero thickness is
         specified, no backbone is rendered.
@@ -1916,16 +1925,23 @@ class Panel:
         rendering one (i.e., skip 1 meand that every other backbone will be
         rendered)
 
+        vfirst and hfirst are indices of the first backbone to render. They are
+        1-indexed.
+
         Return a list of cuts
         """
+        if vfirst == 0:
+            vfirst = vskip + 1
+        if hfirst == 0:
+            hfirst = hskip + 1
+
         hbones = [] if hthickness == 0 \
                     else list(filter(lambda l: isHorizontal(l.coords[0], l.coords[1]), self.backboneLines))
-        activeHbones = skipBackbones(hbones, hskip, lambda x: x.coords[0][1])
+        activeHbones = skipBackbones(hbones, hskip, hfirst, lambda x: x.coords[0][1])
 
         vbones = [] if vthickness == 0 \
                     else list(filter(lambda l: isVertical(l.coords[0], l.coords[1]), self.backboneLines))
-        activeVbones = skipBackbones(vbones, vskip, lambda x: x.coords[0][0])
-
+        activeVbones = skipBackbones(vbones, vskip, vfirst, lambda x: x.coords[0][0])
 
         cutpoints = commonPoints(self.backboneLines)
         pieces, cuts = [], []

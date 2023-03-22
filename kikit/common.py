@@ -1,10 +1,10 @@
 from __future__ import annotations
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Callable
 from kikit.defs import Layer
 from kikit.typing import Box
 from pcbnewTransition import pcbnew, isV7
 from kikit.intervals import AxialLine
-from pcbnew import BOX2I, VECTOR2I, EDA_ANGLE
+from pcbnewTransition.pcbnew import BOX2I, VECTOR2I, EDA_ANGLE
 import os
 from itertools import product, chain, islice
 import numpy as np
@@ -63,7 +63,7 @@ def combineBoundingBoxes(a, b):
     y1 = min(a.GetY(), b.GetY())
     x2 = max(a.GetX() + a.GetWidth(), b.GetX() + b.GetWidth())
     y2 = max(a.GetY() + a.GetHeight(), b.GetY() + b.GetHeight())
-    return BOX2I(VECTOR2I(x1, y1), VECTOR2I(x2 - x1, y2 - y1))
+    return BOX2I(toKiCADPoint((x1, y1)), toKiCADPoint((x2 - x1, y2 - y1)))
 
 def collectEdges(board, layerId, sourceArea=None):
     """ Collect edges in sourceArea on given layer including footprints """
@@ -127,15 +127,15 @@ def rectCenter(rect):
     """
     Given a BOX2I return its center
     """
-    return VECTOR2I(rect.GetX() + rect.GetWidth() // 2, rect.GetY() + rect.GetHeight() // 2)
+    return toKiCADPoint((rect.GetX() + rect.GetWidth() // 2, rect.GetY() + rect.GetHeight() // 2))
 
 def rectByCenter(center, width, height):
     """
     Given a center point and size, return BOX2I
     """
     return BOX2I(
-        VECTOR2I(center[0] - width // 2, center[1] - height // 2),
-        VECTOR2I(width, height))
+        toKiCADPoint((center[0] - width // 2, center[1] - height // 2)),
+        toKiCADPoint((width, height)))
 
 def normalize(vector):
     """ Return a vector with unit length """
@@ -157,19 +157,19 @@ def linestringToSegments(linestring):
 
 def tl(rect):
     """ Return top left corner of rect """
-    return VECTOR2I(rect.GetX(), rect.GetY())
+    return toKiCADPoint((rect.GetX(), rect.GetY()))
 
 def tr(rect):
     """ Return top right corner of rect """
-    return VECTOR2I(rect.GetX() + rect.GetWidth(), rect.GetY())
+    return toKiCADPoint((rect.GetX() + rect.GetWidth(), rect.GetY()))
 
 def br(rect):
     """ Return bottom right corner of rect """
-    return VECTOR2I(rect.GetX() + rect.GetWidth(), rect.GetY() + rect.GetHeight())
+    return toKiCADPoint((rect.GetX() + rect.GetWidth(), rect.GetY() + rect.GetHeight()))
 
 def bl(rect):
     """ Return bottom left corner of rect """
-    return VECTOR2I(rect.GetX(), rect.GetY() + rect.GetHeight())
+    return toKiCADPoint((rect.GetX(), rect.GetY() + rect.GetHeight()))
 
 def removeComponents(board, references):
     """
@@ -297,6 +297,19 @@ def resolveAnchor(anchor):
         "c":  lambda x: x.GetPosition() + toKiCADPoint((x.GetWidth() / 2, x.GetHeight() / 2))
     }
     return choices[anchor]
+
+def splitOn(input: str, predicate: Callable[[str], bool]) \
+        -> Tuple[str, str]:
+    """
+    Split a string into a head fullfilling predicate and the rest
+    """
+    left = ""
+    for i, x in enumerate(input):
+        if predicate(x):
+            left += x
+        else:
+            break
+    return left, input[i:]
 
 def indexOf(list, predicate):
     """

@@ -9,6 +9,7 @@ from kikit.defs import MODULE_ATTR_T
 from kikit.drc_ui import ReportLevel
 from kikit import drc
 from kikit import eeschema, eeschema_v6
+from kikit.text import kikitTextVars
 import sys
 
 if isV6() or isV7():
@@ -38,7 +39,6 @@ def getReference(component):
     if isinstance(component, eeschema_v6.Symbol):
         return eeschema_v6.getReference(component)
     return eeschema.getReference(component)
-
 
 def ensurePassingDrc(board):
     failed = drc.runImpl(board,
@@ -201,10 +201,10 @@ def collectPosData(board, correctionFields, posFilter=lambda x : True,
              footprintOrientation(footprint, getCompensation(footprint))) for footprint in footprints]
 
 def posDataToFile(posData, filename):
-    with open(filename, "w", newline="") as csvfile:
+    with open(filename, "w", newline="", encoding="utf-8") as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
-        for line in sorted(posData, key=lambda x: x[0]):
+        for line in sorted(posData, key=lambda x: naturalComponentKey(x[0])):
             line = list(line)
             for i in [1, 2, 4]:
                 line[i] = f"{line[i]:.2f}" # Most Fab houses expect only 2 decimal digits
@@ -223,3 +223,15 @@ def ensureValidSch(filename):
 def ensureValidBoard(filename):
     if not isValidBoardPath(filename):
         raise RuntimeError(f"The path {filename} is not a valid KiCAD PCB file")
+
+def expandNameTemplate(template: str, filetype: str, board: pcbnew.BOARD) -> str:
+
+    textVars = kikitTextVars(board)
+    try:
+        return template.format(filetype, **textVars)
+    except KeyError as e:
+        raise RuntimeError(f"Unknown variable {e} in --nametemplate: {template}")
+
+def naturalComponentKey(reference: str) -> Tuple[str, int]:
+    text, num = splitOn(reference, lambda x: not x.isdigit())
+    return str(text), int(num)
