@@ -100,6 +100,9 @@ def defaultFootprintX(footprint, placeOffset, compensation):
 def defaultFootprintY(footprint, placeOffset, compensation):
     return -toMm(footprintPosition(footprint, placeOffset, compensation)[1])
 
+def excludeFromPos(footprint):
+    return footprint.GetAttributes() & pcbnew.FP_EXCLUDE_FROM_POS_FILES
+
 def readCorrectionPatterns(filename):
     """
     Read footprint correction pattern file.
@@ -137,16 +140,13 @@ def readCorrectionPatterns(filename):
 
 def applyCorrectionPattern(correctionPatterns, footprint):
     # FIXME: part ID is currently ignored
-    # GetUniStringLibId returns the full footprint name including the 
+    # GetUniStringLibId returns the full footprint name including the
     # library in the form of "Resistor_SMD:R_0402_1005Metric"
     footprintName = str(footprint.GetFPID().GetUniStringLibId())
     for corpat in correctionPatterns:
         if corpat.footprint.match(footprintName):
             return (corpat.x_correction, corpat.y_correction, corpat.rotation)
     return (0, 0, 0)
-
-def excludeFromPos(footprint):
-    return footprint.GetAttributes() & pcbnew.FP_EXCLUDE_FROM_POS_FILES
 
 def collectPosData(board, correctionFields, posFilter=lambda x : True,
                    footprintX=defaultFootprintX, footprintY=defaultFootprintY, bom=None,
@@ -176,8 +176,8 @@ def collectPosData(board, correctionFields, posFilter=lambda x : True,
             continue
         if excludeFromPos(footprint):
             continue
-        if posFilter(footprint) and footprint.GetReference() in bom:
-            footprints.append(footprint)
+        #if posFilter(footprint) and footprint.GetReference() in bom:
+        #    footprints.append(footprint)
     def getCompensation(footprint):
         if footprint.GetReference() not in bom:
             return 0, 0, 0
