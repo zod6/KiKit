@@ -116,7 +116,7 @@ def readCorrectionPatterns(filename):
     """
     corrections = OrderedDict()
     correctionPatterns = []
-    with open(filename) as csvfile:
+    with open(filename, encoding="utf-8") as csvfile:
         sample = csvfile.read(1024)
         dialect = csv.Sniffer().sniff(sample)
         has_header = csv.Sniffer().has_header(sample)
@@ -147,6 +147,9 @@ def applyCorrectionPattern(correctionPatterns, footprint):
         if corpat.footprint.match(footprintName):
             return (corpat.x_correction, corpat.y_correction, corpat.rotation)
     return (0, 0, 0)
+
+def noFilter(footprint):
+    return True
 
 def collectPosData(board, correctionFields, posFilter=lambda x : True,
                    footprintX=defaultFootprintX, footprintY=defaultFootprintY, bom=None,
@@ -225,7 +228,8 @@ def ensureValidBoard(filename):
         raise RuntimeError(f"The path {filename} is not a valid KiCAD PCB file")
 
 def expandNameTemplate(template: str, filetype: str, board: pcbnew.BOARD) -> str:
-
+    if re.findall(r"\{.*\}", template) == []:
+        raise RuntimeError(f"The filename template '{template} must contain at least one variable name")
     textVars = kikitTextVars(board)
     try:
         return template.format(filetype, **textVars)

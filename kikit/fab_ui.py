@@ -1,3 +1,5 @@
+import traceback
+import sys
 import click
 
 def fabCommand(f):
@@ -20,10 +22,12 @@ def execute(fab, kwargs):
     debug = kwargs["debug"]
     del kwargs["debug"]
 
+    if debug:
+        traceback.print_exc(file=sys.stderr)
+
     try:
         return fab(**kwargs)
     except Exception as e:
-        import sys
         sys.stderr.write(f"An error occurred: {e}\n")
         sys.stderr.write("No output files produced\n")
         if debug:
@@ -95,6 +99,22 @@ def oshpark(**kwargs):
     app = fakeKiCADGui()
     return execute(oshpark.exportOSHPark, kwargs)
 
+@click.command()
+@fabCommand
+@click.option("--schematic", type=click.Path(dir_okay=False), help="Board schematics (required for assembly files)")
+@click.option("--ignore", type=str, default="", help="Comma separated list of designators to exclude from SMT assembly")
+@click.option("--corrections", type=str, default="YY1_CORRECTION",
+    help="Comma separated list of component fields with the correction value. First existing field is used")
+@click.option("--correctionpatterns", type=click.Path(dir_okay=False))
+def neodenyy1(**kwargs):
+    """
+    Prepare fabrication files for Neoden YY1
+    """
+    from kikit.fab import neodenyy1
+    from kikit.common import fakeKiCADGui
+    app = fakeKiCADGui()
+    return execute(neodenyy1.exportNeodenYY1, kwargs)
+
 @click.group()
 def fab():
     """
@@ -105,3 +125,4 @@ def fab():
 fab.add_command(jlcpcb)
 fab.add_command(pcbway)
 fab.add_command(oshpark)
+fab.add_command(neodenyy1)

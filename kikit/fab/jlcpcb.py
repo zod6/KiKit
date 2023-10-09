@@ -65,9 +65,6 @@ def bomToCsv(bomData, filename):
                 value, footprint, lcsc = cType
                 writer.writerow([value, ",".join(refChunk), footprint, lcsc])
 
-def noFilter(footprint):
-    return True
-
 def exportJlcpcb(board, outputdir, assembly, schematic, ignore, field,
            corrections, correctionpatterns, missingerror, nametemplate, drc):
     """

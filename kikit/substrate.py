@@ -211,14 +211,6 @@ def approximateBezier(bezier, endWith):
 
     return outline
 
-def createRectangle(rect):
-    """
-    Take PCB_SHAPE and convert it into outline
-    """
-    tl = rect.GetStart()
-    br = rect.GetEnd()
-    return [tl, (br[0], tl[1]), br, (tl[0], br[1]), tl]
-
 def shapeLinechainToList(l: pcbnew.SHAPE_LINE_CHAIN) -> List[Tuple[int, int]]:
     return [(p.x, p.y) for p in l.CPoints()]
 
@@ -259,7 +251,8 @@ def toShapely(ring, geometryList):
             outline += approximateBezier(geometryList[idxA],
                 commonEndPoint(geometryList[idxA], geometryList[idxB]))
         elif shape in [STROKE_T.S_RECT]:
-            outline += createRectangle(geometryList[idxA])
+            assert idxA == idxB
+            outline += geometryList[idxA].GetRectCorners()
         elif shape in [STROKE_T.S_POLYGON]:
             # Polygons are always closed, so they should appear as stand-alone
             assert len(ring) in [1, 2]
@@ -424,14 +417,16 @@ def closestIntersectionPoint(origin, direction, outline, maxDistance):
             plt.show()
         raise NoIntersectionError(f"No intersection found within given distance", origin)
     origin = Point(origin[0], origin[1])
-    if isinstance(inter, Point):
-        geoms = [inter]
-    elif isinstance(inter, LineString):
-        # When a linestring is an intersection, we know that the starting or
-        # ending points are the nearest one
-        geoms = [Point(inter.coords[0]), Point(inter.coords[-1])]
-    else:
-        geoms = inter.geoms
+    geoms = list()
+    for geom in listGeometries(inter):
+        if isinstance(geom, Point):
+            geoms.append(geom)
+        elif isinstance(geom, LineString):
+            # When a linestring is an intersection, we know that the starting or
+            # ending points are the nearest one
+            geoms.extend([Point(geom.coords[0]), Point(geom.coords[-1])])
+        else:
+            raise TypeError(f"intersection() returned an unsupported datatype: {geom.__class__.__name__}")
     return min([(g, origin.distance(g)) for g in geoms], key=lambda t: t[1])[0]
 
 def linestringToKicad(linestring):
@@ -634,66 +629,69 @@ class Substrate:
         self.orient()
 
         origin = np.array(origin)
-        try:
-            direction = np.around(normalize(direction), 4)
-            sideOriginA = origin + makePerpendicular(direction) * width / 2
-            sideOriginB = origin - makePerpendicular(direction) * width / 2
-            boundary = self.substrates.exterior
-            splitPointA = closestIntersectionPoint(sideOriginA, direction,
-                boundary, maxHeight)
-            splitPointB = closestIntersectionPoint(sideOriginB, direction,
-                boundary, maxHeight)
-            tabFace = biteBoundary(boundary, splitPointB, splitPointA)
-            if partitionLine is None:
-                # There is nothing else to do, return the tab
-                tab = Polygon(list(tabFace.coords) + [sideOriginA, sideOriginB])
-                return self._makeTabFillet(tab, tabFace, fillet)
-            # Span the tab towards the partition line
-            # There might be multiple geometries in the partition line, so try them
-            # individually.
-            direction = -direction
-            for p in listGeometries(partitionLine):
-                try:
-                    partitionSplitPointA = closestIntersectionPoint(splitPointA.coords[0],
-                            direction, p, maxHeight)
-                    partitionSplitPointB = closestIntersectionPoint(splitPointB.coords[0],
-                            direction, p, maxHeight)
-                except NoIntersectionError: # We cannot span towards the partition line
-                    continue
-                if isLinestringCyclic(p):
-                    candidates = [(partitionSplitPointA, partitionSplitPointB)]
-                else:
-                    candidates = [(partitionSplitPointA, partitionSplitPointB),
-                        (partitionSplitPointB, partitionSplitPointA)]
-                for i, (spa, spb) in enumerate(candidates):
-                    partitionFace = biteBoundary(p, spa, spb)
-                    if partitionFace is None:
-                        continue
-                    partitionFaceCoord = list(partitionFace.coords)
-                    if i == 1:
-                        partitionFaceCoord = partitionFaceCoord[::-1]
-                    # We offset the tab face a little so we can be sure that we
-                    # penetrate the board substrate. Otherwise, there is a
-                    # numerical instability on small slopes that yields
-                    # artifacts on substrate union
-                    offsetTabFace = [(p[0] - SHP_EPSILON * direction[0], p[1] - SHP_EPSILON * direction[1]) for p in tabFace.coords]
-                    tab = Polygon(offsetTabFace + partitionFaceCoord)
+        for geom in listGeometries(self.substrates):
+            try:
+                direction = np.around(normalize(direction), 4)
+                sideOriginA = origin + makePerpendicular(direction) * width / 2
+                sideOriginB = origin - makePerpendicular(direction) * width / 2
+                boundary = geom.exterior
+                splitPointA = closestIntersectionPoint(sideOriginA, direction,
+                    boundary, maxHeight)
+                splitPointB = closestIntersectionPoint(sideOriginB, direction,
+                    boundary, maxHeight)
+                tabFace = biteBoundary(boundary, splitPointB, splitPointA)
+                if partitionLine is None:
+                    # There is nothing else to do, return the tab
+                    tab = Polygon(list(tabFace.coords) + [sideOriginA, sideOriginB])
                     return self._makeTabFillet(tab, tabFace, fillet)
-            return None, None
-        except NoIntersectionError as e:
-            message = "Cannot create tab:\n"
-            message += f"  Annotation position {self._strPosition(origin)}\n"
-            message += f"  Tab ray origin that failed: {self._strPosition(origin)}\n"
-            message += "Possible causes:\n"
-            message += "- too wide tab so it does not hit the board,\n"
-            message += "- annotation is placed inside the board,\n"
-            message += "- ray length is not sufficient,\n"
-            raise RuntimeError(message) from None
-        except TabFilletError as e:
-            message = f"Cannot create fillet for tab: {e}\n"
-            message += f"  Annotation position {self._strPosition(origin)}\n"
-            message += "This is a bug. Please open an issue and provide the board on which the fillet failed."
-            raise RuntimeError(message) from None
+                # Span the tab towards the partition line
+                # There might be multiple geometries in the partition line, so try them
+                # individually.
+                direction = -direction
+                for p in listGeometries(partitionLine):
+                    try:
+                        partitionSplitPointA = closestIntersectionPoint(splitPointA.coords[0],
+                                direction, p, maxHeight)
+                        partitionSplitPointB = closestIntersectionPoint(splitPointB.coords[0],
+                                direction, p, maxHeight)
+                    except NoIntersectionError: # We cannot span towards the partition line
+                        continue
+                    if isLinestringCyclic(p):
+                        candidates = [(partitionSplitPointA, partitionSplitPointB)]
+                    else:
+                        candidates = [(partitionSplitPointA, partitionSplitPointB),
+                            (partitionSplitPointB, partitionSplitPointA)]
+                    for i, (spa, spb) in enumerate(candidates):
+                        partitionFace = biteBoundary(p, spa, spb)
+                        if partitionFace is None:
+                            continue
+                        partitionFaceCoord = list(partitionFace.coords)
+                        if i == 1:
+                            partitionFaceCoord = partitionFaceCoord[::-1]
+                        # We offset the tab face a little so we can be sure that we
+                        # penetrate the board substrate. Otherwise, there is a
+                        # numerical instability on small slopes that yields
+                        # artifacts on substrate union
+                        offsetTabFace = [(p[0] - SHP_EPSILON * direction[0], p[1] - SHP_EPSILON * direction[1]) for p in tabFace.coords]
+                        tab = Polygon(offsetTabFace + partitionFaceCoord)
+                        return self._makeTabFillet(tab, tabFace, fillet)
+                return None, None
+            except NoIntersectionError as e:
+                continue
+            except TabFilletError as e:
+                message = f"Cannot create fillet for tab: {e}\n"
+                message += f"  Annotation position {self._strPosition(origin)}\n"
+                message += "This is a bug. Please open an issue and provide the board on which the fillet failed."
+                raise RuntimeError(message) from None
+
+        message = "Cannot create tab:\n"
+        message += f"  Annotation position {self._strPosition(origin)}\n"
+        message += f"  Tab ray origin that failed: {self._strPosition(origin)}\n"
+        message += "Possible causes:\n"
+        message += "- too wide tab so it does not hit the board,\n"
+        message += "- annotation is placed inside the board,\n"
+        message += "- ray length is not sufficient,\n"
+        raise RuntimeError(message) from None
 
     def _makeTabFillet(self, tab: Polygon, tabFace: LineString, fillet: KiLength) \
             -> Tuple[Polygon, LineString]:
@@ -871,9 +869,31 @@ class SubstratePartitionLines:
                 return False
             return idA not in ghosts or idB not in ghosts
         self._partition = BoxPartitionLines(
-            boxes,
+            self._preprocessBoxes(boxes),
             seedFilter,
             safeHorizontalMargin, safeVerticalMargin)
+
+    def _preprocessBoxes(self, boxes):
+        """
+        BoxPartitionLines assumes non-overlapping boxes. However, when we
+        specify zero spacing, the boxes share an edge which violates the initial
+        condition. It is safe to shrink the boxes if they are not the outer-most
+        edges.
+        """
+        minx = min(map(lambda x: x[0], boxes.values()))
+        miny = min(map(lambda x: x[1], boxes.values()))
+        maxx = max(map(lambda x: x[2], boxes.values()))
+        maxy = min(map(lambda x: x[3], boxes.values()))
+
+        newBoxes = {}
+        for i, b in boxes.items():
+            newBoxes[i] = (
+                b[0] + SHP_EPSILON if b[0] != minx else minx,
+                b[1] + SHP_EPSILON if b[1] != miny else miny,
+                b[2] - SHP_EPSILON if b[2] != maxx else maxx,
+                b[3] - SHP_EPSILON if b[3] != maxy else maxy
+            )
+        return newBoxes
 
     @property
     def query(self):
